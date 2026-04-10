@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.claude/
+
+web-app/.next/
+web-app/node_modules/
+web-app/.env.local
+web-app/.env
+
+.DS_Store
+Thumbs.db
