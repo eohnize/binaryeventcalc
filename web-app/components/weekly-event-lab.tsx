@@ -474,7 +474,6 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 </div>
               </div>
             </section>
-          </div>
         </div>
       </section>
     </>
