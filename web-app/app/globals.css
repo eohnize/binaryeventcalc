@@ -864,6 +864,7 @@ a {
 }
 
 .scan-page {
+  width: min(1480px, calc(100% - 24px));
   padding-top: 18px;
 }
 
@@ -1010,17 +1011,15 @@ a {
   background: rgba(76, 58, 15, 0.38);
 }
 
-.scan-board-grid {
-  display: grid;
-  grid-template-columns: minmax(300px, 0.74fr) minmax(0, 1.3fr);
-  gap: 16px;
-}
-
-.scan-list-panel,
+.scan-event-grid,
 .scan-detail-panel {
   display: grid;
   gap: 12px;
   align-content: start;
+}
+
+.scan-event-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .scan-event-row {
@@ -1104,6 +1103,24 @@ a {
   gap: 14px;
 }
 
+.scan-context-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(99, 167, 255, 0.2);
+  background: linear-gradient(180deg, rgba(18, 31, 48, 0.72), rgba(10, 17, 25, 0.9));
+}
+
+.scan-context-banner p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 760px;
+}
+
 .scan-score-block {
   min-width: 98px;
   padding: 14px;
@@ -1167,6 +1184,39 @@ a {
   border-right: 1px solid var(--line);
   border-radius: 0 14px 14px 0;
   text-align: right;
+}
+
+.scan-contract-cell,
+.scan-setup-cell {
+  display: grid;
+  gap: 8px;
+}
+
+.scan-setup-cell strong {
+  margin: 0;
+  font-size: 0.94rem;
+}
+
+.scan-setup-cell span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.scan-ticker-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 167, 255, 0.24);
+  background: rgba(99, 167, 255, 0.12);
+  color: var(--blue);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 .scan-input,
@@ -1250,7 +1300,7 @@ a {
   .scan-kpi-grid,
   .scan-mini-grid,
   .scan-watchlist-grid,
-  .scan-board-grid {
+  .scan-event-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1265,7 +1315,8 @@ a {
   .scan-workbench-head,
   .scan-detail-head,
   .scan-planner-toolbar,
-  .scan-two-col {
+  .scan-two-col,
+  .scan-context-banner {
     flex-direction: column;
     align-items: flex-start;
   }

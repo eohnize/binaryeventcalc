@@ -261,38 +261,37 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
           </div>
         </div>
 
-        <div className="scan-board-grid">
-          <aside className="scan-list-panel">
-            {filteredEvents.map((event, index) => (
-              <button
-                key={event.id}
-                type="button"
-                className={`scan-event-row ${event.id === selectedEvent.id ? "selected" : ""}`}
-                onClick={() => loadEvent(event)}
-              >
-                <div className="scan-event-row-top">
-                  <span className="scan-rank">#{index + 1}</span>
-                  <span className="scan-score">{event.ranking.composite}</span>
-                </div>
-                <strong>{event.title}</strong>
-                <p>{event.summary}</p>
-                <div className="scan-meta-line">
-                  <span>{event.eventLabel}</span>
-                  <span>{event.timeLabel}</span>
-                  <span>{scoreHint(event)}</span>
-                </div>
-                <div className="scan-chip-row">
-                  {event.watchlistTickers.slice(0, 4).map((ticker) => (
-                    <span key={ticker} className="scan-chip">
-                      {ticker}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            ))}
-          </aside>
+        <div className="scan-event-grid">
+          {filteredEvents.map((event, index) => (
+            <button
+              key={event.id}
+              type="button"
+              className={`scan-event-row ${event.id === selectedEvent.id ? "selected" : ""}`}
+              onClick={() => loadEvent(event)}
+            >
+              <div className="scan-event-row-top">
+                <span className="scan-rank">#{index + 1}</span>
+                <span className="scan-score">{event.ranking.composite}</span>
+              </div>
+              <strong>{event.title}</strong>
+              <p>{event.summary}</p>
+              <div className="scan-meta-line">
+                <span>{event.eventLabel}</span>
+                <span>{event.timeLabel}</span>
+                <span>{scoreHint(event)}</span>
+              </div>
+              <div className="scan-chip-row">
+                {event.watchlistTickers.slice(0, 4).map((ticker) => (
+                  <span key={ticker} className="scan-chip">
+                    {ticker}
+                  </span>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
 
-          <div className="scan-detail-panel">
+        <div className="scan-detail-panel">
             <section className="scan-detail-card">
               <div className="scan-detail-head">
                 <div>
@@ -353,6 +352,17 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 <a className="primary-btn" href={legacyHref}>Open Legacy Calculator</a>
               </div>
 
+              <div className="scan-context-banner">
+                <div>
+                  <span className="level-kicker">Selected Ticker</span>
+                  <strong>{selectedProfile.symbol}</strong>
+                </div>
+                <p>
+                  Every leg below belongs to <strong>{selectedProfile.symbol}</strong>. Use <strong>CALL</strong> for the upside
+                  expression and <strong>PUT</strong> for the downside or relief leg depending on the event.
+                </p>
+              </div>
+
               <div className="scan-mini-grid">
                 <article className="scan-mini-card"><span className="level-kicker">Profile</span><strong>{selectedProfile.label}</strong><p>{selectedProfile.driver}</p></article>
                 <article className="scan-mini-card"><span className="level-kicker">Deployed</span><strong>{fmtDollar(totalInvested)}</strong><p>{legs.length} editable legs</p></article>
@@ -368,19 +378,32 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 <table className="scan-leg-table">
                   <thead>
                     <tr>
-                      <th>Type</th><th>Strike</th><th>Premium</th><th>Qty</th><th>DTE</th><th>Cost</th><th>Thesis</th><th />
+                      <th>Contract</th><th>Setup</th><th>Strike</th><th>Premium</th><th>Qty</th><th>DTE</th><th>Cost</th><th />
                     </tr>
                   </thead>
                   <tbody>
                     {legs.map((leg) => (
                       <tr key={leg.id}>
-                        <td><select className="scan-select" value={leg.type} onChange={(event) => updateLeg(leg.id, "type", event.target.value)}><option value="call">CALL</option><option value="put">PUT</option></select></td>
+                        <td>
+                          <div className="scan-contract-cell">
+                            <span className="scan-ticker-pill">{selectedProfile.symbol}</span>
+                            <select className="scan-select" value={leg.type} onChange={(event) => updateLeg(leg.id, "type", event.target.value)}>
+                              <option value="call">CALL</option>
+                              <option value="put">PUT</option>
+                            </select>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="scan-setup-cell">
+                            <strong>{leg.label}</strong>
+                            <span>{leg.thesis}</span>
+                          </div>
+                        </td>
                         <td><input className="scan-input" value={leg.strike} onChange={(event) => updateLeg(leg.id, "strike", event.target.value)} inputMode="decimal" /></td>
                         <td><input className="scan-input" value={leg.premium} onChange={(event) => updateLeg(leg.id, "premium", event.target.value)} inputMode="decimal" /></td>
                         <td><input className="scan-input" value={leg.contracts} onChange={(event) => updateLeg(leg.id, "contracts", event.target.value)} inputMode="numeric" /></td>
                         <td><input className="scan-input" value={leg.dte} onChange={(event) => updateLeg(leg.id, "dte", event.target.value)} inputMode="numeric" /></td>
                         <td>{fmtDollar(leg.premium * leg.contracts * 100)}</td>
-                        <td>{leg.thesis}</td>
                         <td><button type="button" className="scan-remove" onClick={() => removeLeg(leg.id)}>x</button></td>
                       </tr>
                     ))}
