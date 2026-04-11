@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import {
-  buildStarterLegs,
+  buildPortfolioStarterLegs,
   estimateOptionPrice,
   type EventCandidate,
   type EventKind,
   type PlannerLeg,
+  type PortfolioScenario,
   type TickerProfile,
   type WeeklyScanSnapshot,
 } from "../lib/weekly-event-lab";
@@ -37,9 +38,15 @@ function safeNumber(value: string, fallback: number) {
 }
 
 type ScenarioResult = {
-  spotAtEvent: number;
   totalPnl: number;
   roi: number;
+  symbolMoves: Array<{
+    symbol: string;
+    movePct: number;
+    spot: number;
+    spotAtEvent: number;
+    impliedMovePct: number;
+  }>;
   legResults: Array<
     PlannerLeg & {
       exit: number;
@@ -47,17 +54,34 @@ type ScenarioResult = {
       cost: number;
       pnl: number;
       multiple: number;
+      spotAtEvent: number;
+      movePct: number;
     }
   >;
 };
+
+type TickerInputState = Record<string, { spot: string; impliedMove: string }>;
+
+function buildTickerInputs(event: EventCandidate): TickerInputState {
+  return Object.fromEntries(
+    event.tickerProfiles.map((profile) => [
+      profile.symbol,
+      {
+        spot: profile.seedSpot.toFixed(2),
+        impliedMove: profile.impliedMovePct.toFixed(1),
+      },
+    ]),
+  );
+}
 
 export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const [kindFilter, setKindFilter] = useState<"all" | EventKind>("all");
   const [selectedEventId, setSelectedEventId] = useState(snapshot.events[0]?.id ?? "");
   const [selectedSymbol, setSelectedSymbol] = useState(snapshot.events[0]?.primarySymbol ?? "");
-  const [spotInput, setSpotInput] = useState("");
-  const [impliedMoveInput, setImpliedMoveInput] = useState("");
-  const [customMove, setCustomMove] = useState(0);
+  const [tickerInputs, setTickerInputs] = useState<TickerInputState>(
+    snapshot.events[0] ? buildTickerInputs(snapshot.events[0]) : {},
+  );
+  const [selectedScenarioName, setSelectedScenarioName] = useState(snapshot.events[0]?.portfolioScenarios[0]?.name ?? "");
   const [legs, setLegs] = useState<PlannerLeg[]>([]);
 
   const filteredEvents = snapshot.events.filter((event) => kindFilter === "all" || event.kind === kindFilter);
@@ -86,12 +110,11 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   }, [selectedEvent, selectedSymbol]);
 
   useEffect(() => {
-    if (!selectedProfile) return;
-    setSpotInput(selectedProfile.seedSpot.toFixed(2));
-    setImpliedMoveInput(selectedProfile.impliedMovePct.toFixed(1));
-    setLegs(buildStarterLegs(selectedProfile, selectedProfile.seedSpot));
-    setCustomMove(0);
-  }, [selectedProfile]);
+    if (!selectedEvent) return;
+    setTickerInputs(buildTickerInputs(selectedEvent));
+    setLegs(buildPortfolioStarterLegs(selectedEvent));
+    setSelectedScenarioName(selectedEvent.portfolioScenarios[0]?.name ?? "");
+  }, [selectedEvent]);
 
   if (!selectedEvent || !selectedProfile) {
     return (
@@ -101,37 +124,62 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
     );
   }
 
-  const currentSpot = safeNumber(spotInput, selectedProfile.seedSpot);
-  const impliedMove = safeNumber(impliedMoveInput, selectedProfile.impliedMovePct);
+  const spotBySymbol = Object.fromEntries(
+    selectedEvent.tickerProfiles.map((profile) => [
+      profile.symbol,
+      safeNumber(tickerInputs[profile.symbol]?.spot ?? "", profile.seedSpot),
+    ]),
+  );
+  const impliedMoveBySymbol = Object.fromEntries(
+    selectedEvent.tickerProfiles.map((profile) => [
+      profile.symbol,
+      safeNumber(tickerInputs[profile.symbol]?.impliedMove ?? "", profile.impliedMovePct),
+    ]),
+  );
   const totalInvested = legs.reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
   const callCost = legs.filter((leg) => leg.type === "call").reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
   const putCost = legs.filter((leg) => leg.type === "put").reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
   const uniqueCoverage = new Set(snapshot.events.flatMap((event) => event.watchlistTickers)).size;
 
-  function calculateScenario(movePct: number): ScenarioResult {
-    const spotAtEvent = currentSpot * (1 + movePct / 100);
+  function calculateScenario(scenario: PortfolioScenario): ScenarioResult {
+    const symbolMoves = selectedEvent.tickerProfiles.map((profile) => {
+      const spot = spotBySymbol[profile.symbol] ?? profile.seedSpot;
+      const movePct = scenario.moves[profile.symbol] ?? 0;
+      return {
+        symbol: profile.symbol,
+        movePct,
+        spot,
+        spotAtEvent: spot * (1 + movePct / 100),
+        impliedMovePct: impliedMoveBySymbol[profile.symbol] ?? profile.impliedMovePct,
+      };
+    });
+    const moveBySymbol = Object.fromEntries(symbolMoves.map((move) => [move.symbol, move]));
     let totalPnl = 0;
     const legResults = legs.map((leg) => {
+      const currentSpot = moveBySymbol[leg.symbol]?.spot ?? 100;
+      const spotAtEvent = moveBySymbol[leg.symbol]?.spotAtEvent ?? currentSpot;
+      const movePct = moveBySymbol[leg.symbol]?.movePct ?? 0;
       const exit = estimateOptionPrice(leg.type, leg.strike, leg.premium, leg.dte, spotAtEvent, currentSpot);
       const cost = leg.premium * leg.contracts * 100;
       const value = exit * leg.contracts * 100;
       const pnl = value - cost;
       totalPnl += pnl;
-      return { ...leg, exit, value, cost, pnl, multiple: cost > 0 ? value / cost : 0 };
+      return { ...leg, exit, value, cost, pnl, multiple: cost > 0 ? value / cost : 0, spotAtEvent, movePct };
     });
 
     return {
-      spotAtEvent,
       totalPnl,
       roi: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
+      symbolMoves,
       legResults,
     };
   }
 
-  function updateLeg(id: number, field: "type" | "strike" | "premium" | "contracts" | "dte", value: string) {
+  function updateLeg(id: number, field: "symbol" | "type" | "strike" | "premium" | "contracts" | "dte", value: string) {
     setLegs((current) =>
       current.map((leg) => {
         if (leg.id !== id) return leg;
+        if (field === "symbol") return { ...leg, symbol: value };
         if (field === "type") return { ...leg, type: value === "put" ? "put" : "call" };
         if (field === "strike") return { ...leg, strike: Number.parseFloat(value) || 0 };
         if (field === "premium") return { ...leg, premium: Number.parseFloat(value) || 0 };
@@ -147,8 +195,9 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
       ...current,
       {
         id: nextId,
+        symbol: selectedSymbol,
         type: "call",
-        strike: Math.round(currentSpot),
+        strike: Math.round(spotBySymbol[selectedSymbol] ?? selectedProfile.seedSpot),
         premium: 1,
         contracts: 1,
         dte: 7,
@@ -173,23 +222,31 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   }
 
   function resetStarterLegs() {
-    setLegs(buildStarterLegs(selectedProfile, currentSpot));
+    setLegs(buildPortfolioStarterLegs(selectedEvent, spotBySymbol));
   }
 
-  const scenarioRows = selectedProfile.scenarios.map((scenario) => ({
+  function updateTickerInput(symbol: string, field: "spot" | "impliedMove", value: string) {
+    setTickerInputs((current) => ({
+      ...current,
+      [symbol]: {
+        spot: current[symbol]?.spot ?? "",
+        impliedMove: current[symbol]?.impliedMove ?? "",
+        [field]: value,
+      },
+    }));
+  }
+
+  const scenarioRows = selectedEvent.portfolioScenarios.map((scenario) => ({
     scenario,
-    result: calculateScenario(scenario.movePct),
-    versusImplied: impliedMove > 0 ? Math.abs(scenario.movePct) / impliedMove : 0,
+    result: calculateScenario(scenario),
   }));
   const bestRow = scenarioRows.reduce((best, row) => (row.result.totalPnl > best.result.totalPnl ? row : best), scenarioRows[0]);
   const worstRow = scenarioRows.reduce((worst, row) => (row.result.totalPnl < worst.result.totalPnl ? row : worst), scenarioRows[0]);
-  const customResult = calculateScenario(customMove);
-  const moves = selectedProfile.scenarios.map((scenario) => scenario.movePct);
-  const sliderMin = Math.floor(Math.min(-10, ...moves) - 2);
-  const sliderMax = Math.ceil(Math.max(10, ...moves) + 2);
+  const selectedScenarioRow =
+    scenarioRows.find((row) => row.scenario.name === selectedScenarioName) ?? scenarioRows[0];
   const launchLeg = legs[0];
   const legacyHref = `/?ticker=${encodeURIComponent(selectedProfile.symbol)}&price=${encodeURIComponent(
-    currentSpot.toFixed(2),
+    (spotBySymbol[selectedProfile.symbol] ?? selectedProfile.seedSpot).toFixed(2),
   )}${launchLeg ? `&strike=${encodeURIComponent(launchLeg.strike.toFixed(2))}&dte=${encodeURIComponent(String(launchLeg.dte))}` : ""}`;
 
   return (
@@ -340,33 +397,57 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               </div>
 
               <div className="scan-planner-toolbar">
-                <label className="field-row compact-input">
-                  <span>Spot</span>
-                  <input value={spotInput} onChange={(event) => setSpotInput(event.target.value)} inputMode="decimal" />
-                </label>
-                <label className="field-row compact-input">
-                  <span>Implied Move %</span>
-                  <input value={impliedMoveInput} onChange={(event) => setImpliedMoveInput(event.target.value)} inputMode="decimal" />
-                </label>
                 <button type="button" className="secondary-btn" onClick={resetStarterLegs}>Reset Starter Legs</button>
                 <a className="primary-btn" href={legacyHref}>Open Legacy Calculator</a>
               </div>
 
               <div className="scan-context-banner">
                 <div>
-                  <span className="level-kicker">Selected Ticker</span>
-                  <strong>{selectedProfile.symbol}</strong>
+                  <span className="level-kicker">Portfolio Mode</span>
+                  <strong>{selectedEvent.tickerProfiles.map((profile) => profile.symbol).join(" / ")}</strong>
                 </div>
                 <p>
-                  Every leg below belongs to <strong>{selectedProfile.symbol}</strong>. Use <strong>CALL</strong> for the upside
-                  expression and <strong>PUT</strong> for the downside or relief leg depending on the event.
+                  One event can now mix adjacent tickers in the same setup. Keep <strong>{selectedProfile.symbol}</strong> as your
+                  focus name for chain work, but use the editable legs below to stack cleaner cross-ticker asymmetry.
                 </p>
               </div>
 
+              <div className="scan-symbol-grid">
+                {selectedEvent.tickerProfiles.map((profile) => (
+                  <article key={profile.symbol} className={`scan-symbol-card ${profile.symbol === selectedProfile.symbol ? "focus" : ""}`}>
+                    <div className="scan-symbol-head">
+                      <button type="button" className={`scan-tab ${profile.symbol === selectedProfile.symbol ? "active" : ""}`} onClick={() => loadProfile(profile)}>
+                        {profile.symbol}
+                      </button>
+                      <span>{profile.driver}</span>
+                    </div>
+                    <div className="scan-symbol-input-grid">
+                      <label className="field-row compact-input">
+                        <span>Spot</span>
+                        <input
+                          value={tickerInputs[profile.symbol]?.spot ?? profile.seedSpot.toFixed(2)}
+                          onChange={(event) => updateTickerInput(profile.symbol, "spot", event.target.value)}
+                          inputMode="decimal"
+                        />
+                      </label>
+                      <label className="field-row compact-input">
+                        <span>Implied Move %</span>
+                        <input
+                          value={tickerInputs[profile.symbol]?.impliedMove ?? profile.impliedMovePct.toFixed(1)}
+                          onChange={(event) => updateTickerInput(profile.symbol, "impliedMove", event.target.value)}
+                          inputMode="decimal"
+                        />
+                      </label>
+                    </div>
+                    <p>{profile.scenarioFocus}</p>
+                  </article>
+                ))}
+              </div>
+
               <div className="scan-mini-grid">
-                <article className="scan-mini-card"><span className="level-kicker">Profile</span><strong>{selectedProfile.label}</strong><p>{selectedProfile.driver}</p></article>
-                <article className="scan-mini-card"><span className="level-kicker">Deployed</span><strong>{fmtDollar(totalInvested)}</strong><p>{legs.length} editable legs</p></article>
-                <article className="scan-mini-card"><span className="level-kicker">Calls vs Puts</span><strong>{fmtDollar(callCost)} / {fmtDollar(putCost)}</strong><p>Starter allocation only</p></article>
+                <article className="scan-mini-card"><span className="level-kicker">Focus Ticker</span><strong>{selectedProfile.label}</strong><p>{selectedProfile.driver}</p></article>
+                <article className="scan-mini-card"><span className="level-kicker">Deployed</span><strong>{fmtDollar(totalInvested)}</strong><p>{legs.length} editable legs across {selectedEvent.tickerProfiles.length} tickers</p></article>
+                <article className="scan-mini-card"><span className="level-kicker">Calls vs Puts</span><strong>{fmtDollar(callCost)} / {fmtDollar(putCost)}</strong><p>Starter allocation can now mix symbols</p></article>
                 <article className="scan-mini-card"><span className="level-kicker">Best vs Worst</span><strong>{compactMoney(bestRow.result.totalPnl)} / {compactMoney(worstRow.result.totalPnl)}</strong><p>{selectedProfile.scenarioFocus}</p></article>
               </div>
 
@@ -386,7 +467,11 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                       <tr key={leg.id}>
                         <td>
                           <div className="scan-contract-cell">
-                            <span className="scan-ticker-pill">{selectedProfile.symbol}</span>
+                            <select className="scan-select" value={leg.symbol} onChange={(event) => updateLeg(leg.id, "symbol", event.target.value)}>
+                              {selectedEvent.tickerProfiles.map((profile) => (
+                                <option key={profile.symbol} value={profile.symbol}>{profile.symbol}</option>
+                              ))}
+                            </select>
                             <select className="scan-select" value={leg.type} onChange={(event) => updateLeg(leg.id, "type", event.target.value)}>
                               <option value="call">CALL</option>
                               <option value="put">PUT</option>
@@ -412,34 +497,53 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               </div>
 
               <div className="scan-scenario-list">
-                {scenarioRows.map(({ scenario, result, versusImplied }) => (
-                  <article key={scenario.name} className="scan-scenario-row">
+                {scenarioRows.map(({ scenario, result }) => (
+                  <button
+                    key={scenario.name}
+                    type="button"
+                    className={`scan-scenario-row ${selectedScenarioRow.scenario.name === scenario.name ? "selected" : ""}`}
+                    onClick={() => setSelectedScenarioName(scenario.name)}
+                  >
                     <div>
                       <strong>{scenario.name}</strong>
                       <p>{scenario.note}</p>
                     </div>
-                    <div className="scan-scenario-metrics">
-                      <span>{fmtPct(scenario.movePct)}</span>
-                      <span>{fmtDollar(result.spotAtEvent, 2)}</span>
-                      <span>{versusImplied.toFixed(1)}x implied</span>
-                      <span className={result.totalPnl >= 0 ? "bull-text" : "bear-text"}>{compactMoney(result.totalPnl)}</span>
+                    <div className="scan-chip-row">
+                      {result.symbolMoves.map((move) => (
+                        <span key={`${scenario.name}-${move.symbol}`} className={`scan-chip ${move.movePct >= 0 ? "bull-chip" : "bear-chip"}`}>
+                          {move.symbol} {fmtPct(move.movePct)}
+                        </span>
+                      ))}
                     </div>
-                  </article>
+                    <div className="scan-scenario-metrics">
+                      <span>{scenario.probability}% weight</span>
+                      <span className={result.totalPnl >= 0 ? "bull-text" : "bear-text"}>{compactMoney(result.totalPnl)}</span>
+                      <span>{result.roi.toFixed(0)}% ROI</span>
+                    </div>
+                  </button>
                 ))}
               </div>
 
               <div className="scan-slider-card">
                 <div className="scan-slider-head">
-                  <strong>Custom Move {fmtPct(customMove)}</strong>
-                  <span>{fmtDollar(customResult.spotAtEvent, 2)} | {compactMoney(customResult.totalPnl)}</span>
+                  <strong>{selectedScenarioRow.scenario.name} Breakdown</strong>
+                  <span className={selectedScenarioRow.result.totalPnl >= 0 ? "bull-text" : "bear-text"}>
+                    {compactMoney(selectedScenarioRow.result.totalPnl)} | {selectedScenarioRow.result.roi.toFixed(0)}% ROI
+                  </span>
                 </div>
-                <input type="range" min={sliderMin} max={sliderMax} step={0.5} value={customMove} onChange={(event) => setCustomMove(Number.parseFloat(event.target.value))} />
+                <div className="scan-chip-row">
+                  {selectedScenarioRow.result.symbolMoves.map((move) => (
+                    <span key={move.symbol} className={`scan-chip ${move.movePct >= 0 ? "bull-chip" : "bear-chip"}`}>
+                      {move.symbol} {fmtDollar(move.spot, 2)} to {fmtDollar(move.spotAtEvent, 2)} ({fmtPct(move.movePct)})
+                    </span>
+                  ))}
+                </div>
                 <div className="scan-breakdown-grid">
-                  {customResult.legResults.map((leg) => (
+                  {selectedScenarioRow.result.legResults.map((leg) => (
                     <div key={leg.id} className="scan-breakdown-card">
-                      <strong>{leg.type.toUpperCase()} {fmtDollar(leg.strike, 2)}</strong>
+                      <strong>{leg.symbol} {leg.type.toUpperCase()} {fmtDollar(leg.strike, 2)}</strong>
                       <p>{leg.label} | {leg.contracts}x | {leg.dte} DTE</p>
-                      <p>{compactMoney(leg.pnl)} | {leg.multiple.toFixed(1)}x</p>
+                      <p>{fmtPct(leg.movePct)} underlying | {compactMoney(leg.pnl)} | {leg.multiple.toFixed(1)}x</p>
                     </div>
                   ))}
                 </div>
