@@ -25,6 +25,10 @@ function compactMoney(value: number) {
   return `${value > 0 ? "+" : ""}$${value.toFixed(0)}`;
 }
 
+function fmtMultiple(value: number) {
+  return `${value.toFixed(1)}x`;
+}
+
 function scoreHint(event: EventCandidate) {
   if (event.ranking.marketImpact >= 95) return "Broad market mover";
   if (event.ranking.asymmetry >= 90) return "Best asymmetry";
@@ -242,8 +246,21 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   }));
   const bestRow = scenarioRows.reduce((best, row) => (row.result.totalPnl > best.result.totalPnl ? row : best), scenarioRows[0]);
   const worstRow = scenarioRows.reduce((worst, row) => (row.result.totalPnl < worst.result.totalPnl ? row : worst), scenarioRows[0]);
+  const weightedExpectedPnl = scenarioRows.reduce(
+    (sum, row) => sum + row.result.totalPnl * (row.scenario.probability / 100),
+    0,
+  );
+  const rewardRiskMultiple =
+    bestRow.result.totalPnl > 0 && worstRow.result.totalPnl < 0
+      ? bestRow.result.totalPnl / Math.abs(worstRow.result.totalPnl)
+      : 0;
+  const passesGuardrail = rewardRiskMultiple >= 2.5;
   const selectedScenarioRow =
     scenarioRows.find((row) => row.scenario.name === selectedScenarioName) ?? scenarioRows[0];
+  const selectedScenarioStress = selectedScenarioRow.result.symbolMoves.reduce((max, move) => {
+    const multiple = move.impliedMovePct > 0 ? Math.abs(move.movePct) / move.impliedMovePct : 0;
+    return Math.max(max, multiple);
+  }, 0);
   const launchLeg = legs[0];
   const legacyHref = `/?ticker=${encodeURIComponent(selectedProfile.symbol)}&price=${encodeURIComponent(
     (spotBySymbol[selectedProfile.symbol] ?? selectedProfile.seedSpot).toFixed(2),
@@ -369,6 +386,14 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 <article className="scan-kpi-card"><span className="level-kicker">Asymmetry</span><strong>{selectedEvent.ranking.asymmetry}/100</strong></article>
               </div>
 
+              <div className="scan-score-grid">
+                <article className="scan-score-card"><span className="level-kicker">Market Impact</span><strong>{selectedEvent.ranking.marketImpact}</strong></article>
+                <article className="scan-score-card"><span className="level-kicker">Ticker Sensitivity</span><strong>{selectedEvent.ranking.tickerSensitivity}</strong></article>
+                <article className="scan-score-card"><span className="level-kicker">Liquidity</span><strong>{selectedEvent.ranking.liquidity}</strong></article>
+                <article className="scan-score-card"><span className="level-kicker">Confidence</span><strong>{selectedEvent.ranking.confidence}</strong></article>
+                <article className="scan-score-card"><span className="level-kicker">Composite Logic</span><strong>{selectedEvent.ranking.composite}</strong><p>Weighted blend with a confidence penalty so high-impact but lower-conviction events do not crowd the top of the board.</p></article>
+              </div>
+
               <div className="scan-chip-row">
                 {selectedEvent.tags.map((tag) => (
                   <span key={tag} className="scan-chip muted">{tag}</span>
@@ -448,7 +473,31 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 <article className="scan-mini-card"><span className="level-kicker">Focus Ticker</span><strong>{selectedProfile.label}</strong><p>{selectedProfile.driver}</p></article>
                 <article className="scan-mini-card"><span className="level-kicker">Deployed</span><strong>{fmtDollar(totalInvested)}</strong><p>{legs.length} editable legs across {selectedEvent.tickerProfiles.length} tickers</p></article>
                 <article className="scan-mini-card"><span className="level-kicker">Calls vs Puts</span><strong>{fmtDollar(callCost)} / {fmtDollar(putCost)}</strong><p>Starter allocation can now mix symbols</p></article>
-                <article className="scan-mini-card"><span className="level-kicker">Best vs Worst</span><strong>{compactMoney(bestRow.result.totalPnl)} / {compactMoney(worstRow.result.totalPnl)}</strong><p>{selectedProfile.scenarioFocus}</p></article>
+                <article className="scan-mini-card"><span className="level-kicker">Weighted Expectancy</span><strong>{compactMoney(weightedExpectedPnl)}</strong><p>Uses the seeded scenario weights below. These are curated probabilities for now, not learned outcomes yet.</p></article>
+                <article className="scan-mini-card"><span className="level-kicker">Best vs Worst</span><strong>{compactMoney(bestRow.result.totalPnl)} / {compactMoney(worstRow.result.totalPnl)}</strong><p className={passesGuardrail ? "bull-text" : "bear-text"}>{passesGuardrail ? `Passes 1:2.5 floor at ${fmtMultiple(rewardRiskMultiple)}` : `Needs rebalance: ${fmtMultiple(rewardRiskMultiple)} vs 2.5x floor`}</p></article>
+              </div>
+
+              <div className="scan-method-grid">
+                <article className="scan-method-card">
+                  <span className="level-kicker">Outcome Memory</span>
+                  <strong>Not Stored Yet</strong>
+                  <p>This version does not write event outcomes to a database yet, so the weights are seeded rather than learned from prior weeks.</p>
+                </article>
+                <article className="scan-method-card">
+                  <span className="level-kicker">Seeded Inputs</span>
+                  <strong>Manual Starting Point</strong>
+                  <p>Spot, implied move, and premiums are starter values. Replace them with live chain data before using the planner for sizing.</p>
+                </article>
+                <article className="scan-method-card">
+                  <span className="level-kicker">Strike Logic</span>
+                  <strong>Percent Off Spot</strong>
+                  <p>Reset Starter Legs rebuilds strikes off the spot you enter using each leg&apos;s seeded distance band, then rounds to listed strike increments.</p>
+                </article>
+                <article className="scan-method-card">
+                  <span className="level-kicker">Scenario Realism</span>
+                  <strong>{fmtMultiple(selectedScenarioStress)} max implied stretch</strong>
+                  <p>Anything much above roughly 2.0x the seeded implied move should be treated as a stress case, not a base expectation.</p>
+                </article>
               </div>
 
               <div className="scan-table-wrap">
@@ -482,6 +531,17 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                           <div className="scan-setup-cell">
                             <strong>{leg.label}</strong>
                             <span>{leg.thesis}</span>
+                            <span>
+                              {(() => {
+                                const currentSpot = spotBySymbol[leg.symbol] ?? 0;
+                                const impliedMovePct = impliedMoveBySymbol[leg.symbol] ?? 0;
+                                const strikeDistancePct =
+                                  currentSpot > 0 ? (Math.abs(leg.strike - currentSpot) / currentSpot) * 100 : 0;
+                                const impliedMultiple =
+                                  impliedMovePct > 0 ? strikeDistancePct / impliedMovePct : 0;
+                                return `${strikeDistancePct.toFixed(1)}% from spot | ${fmtMultiple(impliedMultiple)} of implied`;
+                              })()}
+                            </span>
                           </div>
                         </td>
                         <td><input className="scan-input" value={leg.strike} onChange={(event) => updateLeg(leg.id, "strike", event.target.value)} inputMode="decimal" /></td>
@@ -519,6 +579,15 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                       <span>{scenario.probability}% weight</span>
                       <span className={result.totalPnl >= 0 ? "bull-text" : "bear-text"}>{compactMoney(result.totalPnl)}</span>
                       <span>{result.roi.toFixed(0)}% ROI</span>
+                      <span>
+                        {fmtMultiple(
+                          result.symbolMoves.reduce((max, move) => {
+                            const multiple = move.impliedMovePct > 0 ? Math.abs(move.movePct) / move.impliedMovePct : 0;
+                            return Math.max(max, multiple);
+                          }, 0),
+                        )}{" "}
+                        max implied stretch
+                      </span>
                     </div>
                   </button>
                 ))}
@@ -534,10 +603,13 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 <div className="scan-chip-row">
                   {selectedScenarioRow.result.symbolMoves.map((move) => (
                     <span key={move.symbol} className={`scan-chip ${move.movePct >= 0 ? "bull-chip" : "bear-chip"}`}>
-                      {move.symbol} {fmtDollar(move.spot, 2)} to {fmtDollar(move.spotAtEvent, 2)} ({fmtPct(move.movePct)})
+                      {move.symbol} {fmtDollar(move.spot, 2)} to {fmtDollar(move.spotAtEvent, 2)} ({fmtPct(move.movePct)} | {fmtMultiple(Math.abs(move.movePct) / Math.max(move.impliedMovePct, 0.1))} of implied)
                     </span>
                   ))}
                 </div>
+                <p className="scan-inline-note">
+                  Scenario weights and implied moves are seeded for now. Use this section to stress-test realism before you trust the headline ROI.
+                </p>
                 <div className="scan-breakdown-grid">
                   {selectedScenarioRow.result.legResults.map((leg) => (
                     <div key={leg.id} className="scan-breakdown-card">

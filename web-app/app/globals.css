@@ -928,7 +928,9 @@ a {
 .scan-kpi-grid,
 .scan-mini-grid,
 .scan-watchlist-grid,
-.scan-symbol-grid {
+.scan-symbol-grid,
+.scan-score-grid,
+.scan-method-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -938,7 +940,9 @@ a {
 .scan-kpi-card,
 .scan-mini-card,
 .scan-watch-card,
-.scan-breakdown-card {
+.scan-breakdown-card,
+.scan-score-card,
+.scan-method-card {
   padding: 14px;
   border-radius: 18px;
   border: 1px solid var(--line);
@@ -951,7 +955,9 @@ a {
 .scan-watch-card strong,
 .scan-score-block strong,
 .scan-scenario-row strong,
-.scan-breakdown-card strong {
+.scan-breakdown-card strong,
+.scan-score-card strong,
+.scan-method-card strong {
   display: block;
   margin-bottom: 6px;
   font-size: 1rem;
@@ -963,10 +969,23 @@ a {
 .scan-watch-card p,
 .scan-detail-head p,
 .scan-event-row p,
-.scan-breakdown-card p {
+.scan-breakdown-card p,
+.scan-score-card p,
+.scan-method-card p,
+.scan-inline-note {
   margin: 0;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.scan-mini-card p.bull-text,
+.scan-inline-note.bull-text {
+  color: var(--green);
+}
+
+.scan-mini-card p.bear-text,
+.scan-inline-note.bear-text {
+  color: var(--red);
 }
 
 .scan-workbench {
@@ -1322,6 +1341,10 @@ a {
   background: linear-gradient(180deg, rgba(18, 31, 48, 0.76), rgba(10, 17, 25, 0.94));
   display: grid;
   gap: 12px;
+}
+
+.scan-inline-note {
+  font-size: 0.88rem;
 }
 
 .scan-slider-card input[type="range"] {

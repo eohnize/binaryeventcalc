@@ -134,16 +134,21 @@ function formatDay(date: Date) {
 
 function compositeScore(ranking: Omit<ScoreBreakdown, "composite">, watchlistCoverage: number, kind: EventKind) {
   const kindBonus = { macro: 4, commodity: 3, earnings: 2 }[kind] ?? 0;
+  const weightedBase =
+    ranking.marketImpact * 0.34 +
+    ranking.tickerSensitivity * 0.24 +
+    ranking.asymmetry * 0.2 +
+    ranking.liquidity * 0.12 +
+    ranking.confidence * 0.1;
+  const uncertaintyPenalty = (100 - ranking.confidence) * 0.18;
   return Math.round(
     Math.min(
       100,
-      ranking.marketImpact * 0.34 +
-        ranking.tickerSensitivity * 0.24 +
-        ranking.asymmetry * 0.2 +
-        ranking.liquidity * 0.12 +
-        ranking.confidence * 0.1 +
+      18 +
+        weightedBase * 0.68 +
         Math.min(watchlistCoverage * 1.2, 6) +
-        kindBonus,
+        kindBonus -
+        uncertaintyPenalty,
     ),
   );
 }
@@ -347,10 +352,10 @@ const EVENT_TEMPLATES: EventTemplate[] = [
       { symbol: "SPY", type: "call", distancePct: 1.1, premium: 2.15, contracts: 1, dte: 7, label: "Broad relief call", thesis: "Ceasefire squeeze" },
     ],
     portfolioScenarios: [
-      { name: "Peace / supply relief", probability: 24, note: "War premium comes out of oil and broad risk assets squeeze higher.", moves: { XOM: -7.8, XLE: -6.4, SPY: 1.8, QQQ: 2.4 } },
+      { name: "Peace / supply relief", probability: 24, note: "War premium comes out of oil and broad risk assets squeeze higher.", moves: { XOM: -6.4, XLE: -5.2, SPY: 1.4, QQQ: 1.9 } },
       { name: "Deadline extension / chop", probability: 25, note: "Neither tail resolves and theta becomes the tax.", moves: { XOM: -1.1, XLE: -0.8, SPY: -0.3, QQQ: -0.4 } },
-      { name: "Moderate escalation", probability: 31, note: "Oil squeezes, energy catches a bid, and the index hedge starts to pay.", moves: { XOM: 5.4, XLE: 4.8, SPY: -2.2, QQQ: -2.8 } },
-      { name: "Infrastructure shock", probability: 20, note: "The tail outcome where energy calls and risk-off index puts both light up.", moves: { XOM: 9.8, XLE: 8.1, SPY: -3.7, QQQ: -4.6 } },
+      { name: "Moderate escalation", probability: 31, note: "Oil squeezes, energy catches a bid, and the index hedge starts to pay.", moves: { XOM: 4.9, XLE: 4.3, SPY: -1.6, QQQ: -2.1 } },
+      { name: "Infrastructure shock", probability: 20, note: "The tail outcome where energy calls and risk-off index puts both light up.", moves: { XOM: 8.3, XLE: 6.9, SPY: -2.7, QQQ: -3.4 } },
     ],
     ranking: { marketImpact: 92, tickerSensitivity: 94, asymmetry: 91, liquidity: 90, confidence: 68 },
     tickerProfiles: [
@@ -368,10 +373,10 @@ const EVENT_TEMPLATES: EventTemplate[] = [
           { type: "put", distancePct: 5.4, premium: 0.38, contracts: 4, dte: 4, label: "Tail put", thesis: "Fast unwind" },
         ],
         scenarios: [
-          { name: "Peace / supply relief", movePct: -7.8, probability: 24, note: "War premium comes out quickly." },
+          { name: "Peace / supply relief", movePct: -6.4, probability: 24, note: "War premium comes out quickly." },
           { name: "Status quo drift", movePct: -1.1, probability: 25, note: "Neither tail resolves and theta hurts." },
-          { name: "Moderate escalation", movePct: 5.4, probability: 31, note: "Oil squeezes and XOM catches up." },
-          { name: "Infrastructure shock", movePct: 9.8, probability: 20, note: "Tail call ladder does the work." },
+          { name: "Moderate escalation", movePct: 4.9, probability: 31, note: "Oil squeezes and XOM catches up." },
+          { name: "Infrastructure shock", movePct: 8.3, probability: 20, note: "Tail call ladder does the work." },
         ],
       },
       {
@@ -388,10 +393,10 @@ const EVENT_TEMPLATES: EventTemplate[] = [
           { type: "put", distancePct: 4.8, premium: 0.47, contracts: 3, dte: 4, label: "Tail put", thesis: "De-escalation" },
         ],
         scenarios: [
-          { name: "Supply relief", movePct: -6.4, probability: 24, note: "Energy ETF bleeds out the premium." },
+          { name: "Supply relief", movePct: -5.2, probability: 24, note: "Energy ETF bleeds out the premium." },
           { name: "No resolution", movePct: -0.8, probability: 27, note: "Theta grind unless headlines return." },
-          { name: "Moderate escalation", movePct: 4.8, probability: 30, note: "Sector catches a cleaner move." },
-          { name: "Crude shock", movePct: 8.1, probability: 19, note: "ETF laggards catch up into the close." },
+          { name: "Moderate escalation", movePct: 4.3, probability: 30, note: "Sector catches a cleaner move." },
+          { name: "Crude shock", movePct: 6.9, probability: 19, note: "ETF laggards catch up into the close." },
         ],
       },
       {
@@ -408,10 +413,10 @@ const EVENT_TEMPLATES: EventTemplate[] = [
           { type: "put", distancePct: 2.1, premium: 0.9, contracts: 1, dte: 4, label: "Tail put", thesis: "Trend lower" },
         ],
         scenarios: [
-          { name: "Relief rally", movePct: 1.8, probability: 24, note: "War premium comes out and SPY lifts." },
+          { name: "Relief rally", movePct: 1.4, probability: 24, note: "War premium comes out and SPY lifts." },
           { name: "Wait and see", movePct: -0.3, probability: 25, note: "The tape stalls and chops." },
-          { name: "Escalation risk-off", movePct: -2.2, probability: 31, note: "The hedge leg starts doing real work." },
-          { name: "Full risk-off gap", movePct: -3.7, probability: 20, note: "Tail puts join the energy calls." },
+          { name: "Escalation risk-off", movePct: -1.6, probability: 31, note: "The hedge leg starts doing real work." },
+          { name: "Full risk-off gap", movePct: -2.7, probability: 20, note: "Tail puts join the energy calls." },
         ],
       },
       {
@@ -428,10 +433,10 @@ const EVENT_TEMPLATES: EventTemplate[] = [
           { type: "put", distancePct: 2.6, premium: 1.25, contracts: 1, dte: 4, label: "Tail put", thesis: "Growth unwind" },
         ],
         scenarios: [
-          { name: "Relief rally", movePct: 2.4, probability: 24, note: "Higher beta de-escalation bounce." },
+          { name: "Relief rally", movePct: 1.9, probability: 24, note: "Higher beta de-escalation bounce." },
           { name: "Wait and see", movePct: -0.4, probability: 25, note: "The tape goes nowhere helpful." },
-          { name: "Escalation risk-off", movePct: -2.8, probability: 31, note: "QQQ underperforms SPY on risk-off." },
-          { name: "Full risk-off gap", movePct: -4.6, probability: 20, note: "Tail downside is sharper in tech." },
+          { name: "Escalation risk-off", movePct: -2.1, probability: 31, note: "QQQ underperforms SPY on risk-off." },
+          { name: "Full risk-off gap", movePct: -3.4, probability: 20, note: "Tail downside is sharper in tech, but still bounded versus a full macro crash." },
         ],
       },
     ],
@@ -552,8 +557,10 @@ export function buildWeeklyScanSnapshot(now = new Date()): WeeklyScanSnapshot {
     weekLabel: `Week Of ${formatDay(weekStart)}`,
     weekRangeLabel: `${formatDay(weekStart)} - ${formatDay(weekEnd)}`,
     notes: [
-      "This is a seeded first iteration. Replace spot, implied move, and premiums with live numbers before trading.",
+      "Seeded first iteration means the scenario weights, implied move inputs, and starter premiums are curated defaults, not live vendor data yet.",
+      "Replace spot, implied move, and premiums with live numbers before trading. The current strike ladders reset off the spot you enter.",
       "The ranking is there to narrow attention on Monday, not to auto-trade the setup.",
+      "Binary outcomes are not stored yet. To make the planner learn over time on Vercel, the next step is persisting outcome rows and pre-event option snapshots in a database.",
       "Legacy calculator flow stays untouched. This page is a separate planner we can later connect to cron jobs and live vendor data.",
     ],
     topThemes: ["macro", "laggard", "oil", "semis"],
