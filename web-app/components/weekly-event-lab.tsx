@@ -624,7 +624,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               </div>
 
               <div className="scan-scenario-list">
-                {scenarioRows.map(({ scenario, result }) => (
+                {scenarioRows.map(({ scenario, probabilityWeight, result }) => (
                   <button
                     key={scenario.name}
                     type="button"
