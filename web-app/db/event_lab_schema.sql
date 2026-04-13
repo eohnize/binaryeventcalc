@@ -5,7 +5,8 @@ create table if not exists scan_runs (
   week_of_date date not null,
   generated_at timestamptz not null default now(),
   source_mode text not null default 'seeded',
-  notes jsonb not null default '[]'::jsonb
+  notes jsonb not null default '[]'::jsonb,
+  snapshot_payload jsonb
 );
 
 create table if not exists event_candidates (

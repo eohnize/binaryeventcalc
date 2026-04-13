@@ -54,6 +54,24 @@ The shell embeds the current calculator and points at `NEXT_PUBLIC_CALCULATOR_UR
 NEXT_PUBLIC_CALCULATOR_URL=/api
 ```
 
+## Optional Postgres persistence
+
+The weekly scan can now read from and write to Postgres when `DATABASE_URL` is configured.
+
+- Add `DATABASE_URL` and `EVENT_LAB_ADMIN_KEY` to your Vercel project variables
+- Apply the schema in:
+  - `db/event_lab_schema.sql`
+- `GET /weekly-scan/data`
+  - returns the stored snapshot for the current week when available, otherwise falls back to the seeded builder
+- `POST /weekly-scan/data`
+  - persists a scan snapshot when you send the header:
+
+```text
+x-event-lab-key: <EVENT_LAB_ADMIN_KEY>
+```
+
+This keeps the weekly scan deployable even before live vendors are wired in.
+
 ## First-time deployment
 
 Use the hand-holding guide in:

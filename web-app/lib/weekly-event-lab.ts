@@ -125,6 +125,7 @@ export type WeeklyScanSnapshot = {
   generatedAt: string;
   weekLabel: string;
   weekRangeLabel: string;
+  weekStartDate: string;
   notes: string[];
   topThemes: string[];
   watchlist: WatchlistGroup[];
@@ -731,6 +732,7 @@ export function buildWeeklyScanSnapshot(now = new Date()): WeeklyScanSnapshot {
     generatedAt: new Date().toISOString(),
     weekLabel: `Week Of ${formatDay(weekStart)}`,
     weekRangeLabel: `${formatDay(weekStart)} - ${formatDay(weekEnd)}`,
+    weekStartDate: isoDate(weekStart),
     notes: [
       "Seeded first iteration means the scenario weights, implied move inputs, and starter premiums are curated defaults, not live vendor data yet.",
       "Prediction-market inputs are now blended into the weekly scan when a clean contract exists, but they are still seeded placeholders until we connect real APIs.",
