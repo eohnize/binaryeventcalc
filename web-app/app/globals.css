@@ -993,6 +993,15 @@ a {
   gap: 18px;
 }
 
+.scan-probability-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(99, 167, 255, 0.18);
+  background: rgba(10, 17, 26, 0.72);
+}
+
 .scan-workbench-head {
   display: flex;
   justify-content: space-between;
@@ -1168,6 +1177,68 @@ a {
   font-size: 0.86rem;
   line-height: 1.45;
   margin: 0;
+}
+
+.scan-probability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.scan-probability-card {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(8, 14, 22, 0.84);
+  display: grid;
+  gap: 8px;
+}
+
+.scan-probability-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.scan-probability-top,
+.scan-probability-stats,
+.scan-probability-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.scan-probability-stats,
+.scan-probability-row {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.scan-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(8, 14, 22, 0.92);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.scan-mode-pill.hybrid {
+  color: var(--gold);
+  border-color: rgba(244, 193, 95, 0.28);
+  background: rgba(76, 58, 15, 0.34);
+}
+
+.scan-mode-pill.historical-only {
+  color: var(--blue);
+  border-color: rgba(99, 167, 255, 0.28);
+  background: rgba(17, 35, 60, 0.34);
 }
 
 .scan-symbol-input-grid {
@@ -1381,6 +1452,7 @@ a {
   .scan-mini-grid,
   .scan-watchlist-grid,
   .scan-symbol-grid,
+  .scan-probability-grid,
   .scan-event-grid {
     grid-template-columns: 1fr;
   }

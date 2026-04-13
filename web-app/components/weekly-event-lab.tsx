@@ -20,6 +20,10 @@ function fmtPct(value: number) {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function fmtSignedNumber(value: number) {
+  return `${value > 0 ? "+" : ""}${value.toFixed(0)}`;
+}
+
 function compactMoney(value: number) {
   if (Math.abs(value) >= 1000) return `${value > 0 ? "+" : ""}$${(value / 1000).toFixed(1)}k`;
   return `${value > 0 ? "+" : ""}$${value.toFixed(0)}`;
@@ -27,6 +31,16 @@ function compactMoney(value: number) {
 
 function fmtMultiple(value: number) {
   return `${value.toFixed(1)}x`;
+}
+
+function fmtProbability(value: number | null) {
+  return value == null ? "N/A" : `${value}%`;
+}
+
+function qualityTone(quality: "high" | "medium" | "low") {
+  if (quality === "high") return "bull-chip";
+  if (quality === "low") return "bear-chip";
+  return "muted";
 }
 
 function scoreHint(event: EventCandidate) {
@@ -144,6 +158,9 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const callCost = legs.filter((leg) => leg.type === "call").reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
   const putCost = legs.filter((leg) => leg.type === "put").reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
   const uniqueCoverage = new Set(snapshot.events.flatMap((event) => event.watchlistTickers)).size;
+  const probabilityWeightByName = new Map(
+    selectedEvent.probabilityOverlay.scenarioWeights.map((weight) => [weight.scenarioName, weight]),
+  );
 
   function calculateScenario(scenario: PortfolioScenario): ScenarioResult {
     const symbolMoves = selectedEvent.tickerProfiles.map((profile) => {
@@ -242,6 +259,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
 
   const scenarioRows = selectedEvent.portfolioScenarios.map((scenario) => ({
     scenario,
+    probabilityWeight: probabilityWeightByName.get(scenario.name),
     result: calculateScenario(scenario),
   }));
   const bestRow = scenarioRows.reduce((best, row) => (row.result.totalPnl > best.result.totalPnl ? row : best), scenarioRows[0]);
@@ -303,8 +321,8 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
           </article>
           <article className="scan-stat-card">
             <span className="level-kicker">Data Mode</span>
-            <strong>Seeded v1</strong>
-            <p>Built to stay deployable on Vercel while we wire in live calendars and options data next.</p>
+            <strong>Seeded + Blend</strong>
+            <p>Built to stay deployable on Vercel while we wire in live calendars, prediction markets, and options data next.</p>
           </article>
           <article className="scan-stat-card">
             <span className="level-kicker">JSON Hook</span>
@@ -399,6 +417,50 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   <span key={tag} className="scan-chip muted">{tag}</span>
                 ))}
               </div>
+
+              <div className="scan-probability-panel">
+                <div className="scan-detail-head compact">
+                  <div>
+                    <h3>Probability Engine</h3>
+                    <p>{selectedEvent.probabilityOverlay.note}</p>
+                  </div>
+                  <span className={`scan-mode-pill ${selectedEvent.probabilityOverlay.mode}`}>
+                    {selectedEvent.probabilityOverlay.mode === "hybrid" ? "Hybrid Blend" : "Historical Only"}
+                  </span>
+                </div>
+
+                <div className="scan-probability-grid">
+                  {selectedEvent.probabilityOverlay.sources.length > 0 ? (
+                    selectedEvent.probabilityOverlay.sources.map((source) => (
+                      <article key={`${source.source}-${source.marketLabel}-${source.contractLabel}`} className="scan-probability-card">
+                        <div className="scan-probability-top">
+                          <strong>{source.source.toUpperCase()}</strong>
+                          <span className={`scan-chip ${qualityTone(source.quality)}`}>{source.quality} quality</span>
+                        </div>
+                        <p>{source.marketLabel}</p>
+                        <strong>{source.contractLabel}</strong>
+                        <div className="scan-probability-stats">
+                          <span>{fmtProbability(source.probability)} live bias</span>
+                          <span>{fmtSignedNumber(source.change1d)} pts 1d</span>
+                        </div>
+                        <p>{source.note}</p>
+                      </article>
+                    ))
+                  ) : (
+                    <article className="scan-probability-card">
+                      <div className="scan-probability-top">
+                        <strong>No Direct Market</strong>
+                        <span className="scan-chip muted">Historical prior</span>
+                      </div>
+                      <p>This setup currently leans on category history and your forward event journal rather than a clean market-implied odds feed.</p>
+                    </article>
+                  )}
+                </div>
+
+                <p className="scan-inline-note">
+                  {selectedEvent.probabilityOverlay.blendRule}
+                </p>
+              </div>
             </section>
 
             <section className="scan-detail-card">
@@ -473,7 +535,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 <article className="scan-mini-card"><span className="level-kicker">Focus Ticker</span><strong>{selectedProfile.label}</strong><p>{selectedProfile.driver}</p></article>
                 <article className="scan-mini-card"><span className="level-kicker">Deployed</span><strong>{fmtDollar(totalInvested)}</strong><p>{legs.length} editable legs across {selectedEvent.tickerProfiles.length} tickers</p></article>
                 <article className="scan-mini-card"><span className="level-kicker">Calls vs Puts</span><strong>{fmtDollar(callCost)} / {fmtDollar(putCost)}</strong><p>Starter allocation can now mix symbols</p></article>
-                <article className="scan-mini-card"><span className="level-kicker">Weighted Expectancy</span><strong>{compactMoney(weightedExpectedPnl)}</strong><p>Uses the seeded scenario weights below. These are curated probabilities for now, not learned outcomes yet.</p></article>
+                <article className="scan-mini-card"><span className="level-kicker">Weighted Expectancy</span><strong>{compactMoney(weightedExpectedPnl)}</strong><p>Uses blended scenario weights from history and prediction-market bias when a clean market exists.</p></article>
                 <article className="scan-mini-card"><span className="level-kicker">Best vs Worst</span><strong>{compactMoney(bestRow.result.totalPnl)} / {compactMoney(worstRow.result.totalPnl)}</strong><p className={passesGuardrail ? "bull-text" : "bear-text"}>{passesGuardrail ? `Passes 1:2.5 floor at ${fmtMultiple(rewardRiskMultiple)}` : `Needs rebalance: ${fmtMultiple(rewardRiskMultiple)} vs 2.5x floor`}</p></article>
               </div>
 
@@ -482,6 +544,11 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   <span className="level-kicker">Outcome Memory</span>
                   <strong>Not Stored Yet</strong>
                   <p>This version does not write event outcomes to a database yet, so the weights are seeded rather than learned from prior weeks.</p>
+                </article>
+                <article className="scan-method-card">
+                  <span className="level-kicker">Prediction Market Blend</span>
+                  <strong>{selectedEvent.probabilityOverlay.mode === "hybrid" ? "Bias overlay active" : "No direct contract yet"}</strong>
+                  <p>{selectedEvent.probabilityOverlay.mode === "hybrid" ? "Live market odds help tilt the scenario weights, but they do not replace move mapping or option-chain quality checks." : "This board keeps the historical prior fully in control until we have a cleaner external probability source."}</p>
                 </article>
                 <article className="scan-method-card">
                   <span className="level-kicker">Seeded Inputs</span>
@@ -568,6 +635,13 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                       <strong>{scenario.name}</strong>
                       <p>{scenario.note}</p>
                     </div>
+                    {probabilityWeight ? (
+                      <div className="scan-probability-row">
+                        <span>Hist {fmtProbability(probabilityWeight.historicalPrior)}</span>
+                        <span>Market {fmtProbability(probabilityWeight.marketImplied)}</span>
+                        <span>Blend {fmtProbability(probabilityWeight.blendedProbability)}</span>
+                      </div>
+                    ) : null}
                     <div className="scan-chip-row">
                       {result.symbolMoves.map((move) => (
                         <span key={`${scenario.name}-${move.symbol}`} className={`scan-chip ${move.movePct >= 0 ? "bull-chip" : "bear-chip"}`}>
@@ -608,7 +682,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   ))}
                 </div>
                 <p className="scan-inline-note">
-                  Scenario weights and implied moves are seeded for now. Use this section to stress-test realism before you trust the headline ROI.
+                  Scenario weights are now blended from historical priors and seeded prediction-market bias when available. Implied moves and option prices are still starter inputs until we wire live vendors.
                 </p>
                 <div className="scan-breakdown-grid">
                   {selectedScenarioRow.result.legResults.map((leg) => (

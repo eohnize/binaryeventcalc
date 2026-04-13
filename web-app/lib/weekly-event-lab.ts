@@ -1,5 +1,9 @@
 export type EventKind = "macro" | "commodity" | "earnings";
 
+export type PredictionMarketSource = "kalshi" | "polymarket";
+
+export type ProbabilityOverlayMode = "hybrid" | "historical-only";
+
 export type ScoreBreakdown = {
   marketImpact: number;
   tickerSensitivity: number;
@@ -43,6 +47,34 @@ export type PortfolioScenario = {
   moves: Record<string, number>;
 };
 
+export type PredictionMarketSignal = {
+  source: PredictionMarketSource;
+  marketLabel: string;
+  contractLabel: string;
+  probability: number;
+  change1d: number;
+  quality: "high" | "medium" | "low";
+  note: string;
+};
+
+export type ScenarioProbabilityWeight = {
+  scenarioName: string;
+  historicalPrior: number;
+  marketImplied: number | null;
+  blendedProbability: number;
+  note: string;
+};
+
+export type ProbabilityOverlay = {
+  mode: ProbabilityOverlayMode;
+  label: string;
+  note: string;
+  blendRule: string;
+  marketInfluence: number;
+  sources: PredictionMarketSignal[];
+  scenarioWeights: ScenarioProbabilityWeight[];
+};
+
 export type TickerProfile = {
   symbol: string;
   label: string;
@@ -74,6 +106,7 @@ export type EventCandidate = {
   tickerProfiles: TickerProfile[];
   portfolioLegSeeds: PortfolioLegSeed[];
   portfolioScenarios: PortfolioScenario[];
+  probabilityOverlay: ProbabilityOverlay;
 };
 
 export type PlannerLeg = {
@@ -98,9 +131,16 @@ export type WeeklyScanSnapshot = {
   events: EventCandidate[];
 };
 
-type EventTemplate = Omit<EventCandidate, "eventDate" | "eventLabel" | "ranking"> & {
+type EventTemplate = Omit<EventCandidate, "eventDate" | "eventLabel" | "ranking" | "probabilityOverlay"> & {
   dayOffset: number;
   ranking: Omit<ScoreBreakdown, "composite">;
+  probabilityOverlay: ProbabilityOverlaySeed;
+};
+
+type ScenarioProbabilitySeed = Omit<ScenarioProbabilityWeight, "blendedProbability">;
+
+type ProbabilityOverlaySeed = Omit<ProbabilityOverlay, "blendRule" | "scenarioWeights"> & {
+  scenarioWeights: ScenarioProbabilitySeed[];
 };
 
 function addDays(date: Date, days: number) {
@@ -156,6 +196,61 @@ function compositeScore(ranking: Omit<ScoreBreakdown, "composite">, watchlistCov
 function roundStrike(raw: number, spot: number) {
   const increment = spot >= 300 ? 1 : 0.5;
   return Math.round(raw / increment) * increment;
+}
+
+function normalizeProbabilities(values: number[]) {
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return values.map(() => 0);
+
+  const scaled = values.map((value) => (value / total) * 100);
+  const floors = scaled.map((value) => Math.floor(value));
+  let remainder = 100 - floors.reduce((sum, value) => sum + value, 0);
+  const rankedFractions = scaled
+    .map((value, index) => ({ index, fraction: value - floors[index] }))
+    .sort((left, right) => right.fraction - left.fraction);
+
+  const normalized = [...floors];
+  let pointer = 0;
+  while (remainder > 0 && rankedFractions.length > 0) {
+    normalized[rankedFractions[pointer % rankedFractions.length].index] += 1;
+    remainder -= 1;
+    pointer += 1;
+  }
+
+  return normalized;
+}
+
+function buildProbabilityOverlay(seed: ProbabilityOverlaySeed): ProbabilityOverlay {
+  const rawBlended = seed.scenarioWeights.map((scenario) =>
+    scenario.marketImplied == null
+      ? scenario.historicalPrior
+      : scenario.historicalPrior * (1 - seed.marketInfluence) + scenario.marketImplied * seed.marketInfluence,
+  );
+  const blended = normalizeProbabilities(rawBlended);
+  const blendRule =
+    seed.mode === "historical-only"
+      ? "Historical prior only. No direct prediction-market contract is blended into this board yet."
+      : `Blended ${Math.round((1 - seed.marketInfluence) * 100)}% historical prior with ${Math.round(seed.marketInfluence * 100)}% live market-odds bias.`;
+
+  return {
+    ...seed,
+    blendRule,
+    scenarioWeights: seed.scenarioWeights.map((scenario, index) => ({
+      ...scenario,
+      blendedProbability: blended[index],
+    })),
+  };
+}
+
+function applyBlendedProbabilities(scenarios: PortfolioScenario[], overlay: ProbabilityOverlay) {
+  const probabilityByName = new Map(
+    overlay.scenarioWeights.map((weight) => [weight.scenarioName, weight.blendedProbability]),
+  );
+
+  return scenarios.map((scenario) => ({
+    ...scenario,
+    probability: probabilityByName.get(scenario.name) ?? scenario.probability,
+  }));
 }
 
 export function buildStarterLegs(profile: TickerProfile, spot = profile.seedSpot): PlannerLeg[] {
@@ -249,6 +344,38 @@ const EVENT_TEMPLATES: EventTemplate[] = [
     primarySymbol: "SPY",
     scenarioPlanningNote: "Use Monday's scan to shortlist this setup, then replace the starter premiums with live numbers once the first move hits.",
     dataChecklist: ["Consensus versus whisper", "Front-week ATM implied move", "First 30-minute realized move", "TNX confirmation"],
+    probabilityOverlay: {
+      mode: "hybrid",
+      label: "Macro odds overlay",
+      note: "Prediction markets do not replace the print, but they help us see whether the crowd is leaning toward a cooler or hotter surprise before the release.",
+      marketInfluence: 0.45,
+      sources: [
+        {
+          source: "kalshi",
+          marketLabel: "CPI surprise board",
+          contractLabel: "Cooler-than-consensus print",
+          probability: 42,
+          change1d: 5,
+          quality: "high",
+          note: "Most direct event contract in the stack.",
+        },
+        {
+          source: "polymarket",
+          marketLabel: "Rates narrative proxy",
+          contractLabel: "More dovish path by late summer",
+          probability: 47,
+          change1d: 3,
+          quality: "medium",
+          note: "Useful as a bias check, but less direct than the CPI contract itself.",
+        },
+      ],
+      scenarioWeights: [
+        { scenarioName: "Cool print relief", historicalPrior: 27, marketImplied: 24, note: "The market still leans slightly warmer than a clean relief print." },
+        { scenarioName: "Inline / churn", historicalPrior: 24, marketImplied: 31, note: "Inline remains the crowd's nuisance base case." },
+        { scenarioName: "Sticky inflation flush", historicalPrior: 29, marketImplied: 27, note: "Still very live, but not running away from the field." },
+        { scenarioName: "Rates shock trend day", historicalPrior: 20, marketImplied: 18, note: "The true downside tail stays capped until the print proves otherwise." },
+      ],
+    },
     portfolioLegSeeds: [
       { symbol: "SPY", type: "call", distancePct: 1.1, premium: 2.35, contracts: 2, dte: 7, label: "Relief call", thesis: "Cool print broad bid" },
       { symbol: "QQQ", type: "call", distancePct: 1.6, premium: 3.05, contracts: 2, dte: 7, label: "Beta relief call", thesis: "Lower yields hit duration" },
@@ -342,6 +469,38 @@ const EVENT_TEMPLATES: EventTemplate[] = [
     primarySymbol: "XOM",
     scenarioPlanningNote: "Use the planner to map the tails, but do not size until WTI and the chain confirm the setup.",
     dataChecklist: ["WTI overnight range", "Front-week implied move", "Live headline board", "Current oil beta regime"],
+    probabilityOverlay: {
+      mode: "hybrid",
+      label: "Geopolitical odds overlay",
+      note: "Prediction markets are strongest here as a bias gauge for de-escalation versus delay, while the move map still comes from transmission history across oil, energy equities, and indices.",
+      marketInfluence: 0.55,
+      sources: [
+        {
+          source: "kalshi",
+          marketLabel: "Gulf resolution board",
+          contractLabel: "Ceasefire or supply reopening by week end",
+          probability: 38,
+          change1d: -4,
+          quality: "high",
+          note: "Cleaner structured event contract for the weekly board.",
+        },
+        {
+          source: "polymarket",
+          marketLabel: "Conflict de-escalation",
+          contractLabel: "Tensions ease this week",
+          probability: 41,
+          change1d: -6,
+          quality: "medium",
+          note: "Broad sentiment signal, but quality depends on market depth and spread.",
+        },
+      ],
+      scenarioWeights: [
+        { scenarioName: "Peace / supply relief", historicalPrior: 24, marketImplied: 21, note: "Relief is still possible, but the live market does not trust the clean resolution yet." },
+        { scenarioName: "Deadline extension / chop", historicalPrior: 25, marketImplied: 29, note: "The crowd often underestimates how often ambiguity wins for a while." },
+        { scenarioName: "Moderate escalation", historicalPrior: 31, marketImplied: 30, note: "Still the central risk path if de-escalation does not arrive." },
+        { scenarioName: "Infrastructure shock", historicalPrior: 20, marketImplied: 20, note: "The true tail remains capped, but too dangerous to ignore." },
+      ],
+    },
     portfolioLegSeeds: [
       { symbol: "XOM", type: "call", distancePct: 3.2, premium: 1.05, contracts: 3, dte: 7, label: "Escalation call", thesis: "Oil spike" },
       { symbol: "XLE", type: "call", distancePct: 2.8, premium: 1.24, contracts: 3, dte: 7, label: "Sector escalation call", thesis: "Energy basket squeeze" },
@@ -456,6 +615,19 @@ const EVENT_TEMPLATES: EventTemplate[] = [
     primarySymbol: "AMD",
     scenarioPlanningNote: "The setup becomes better after the leader has spoken and the laggard spread is still open.",
     dataChecklist: ["Leader implied versus realized move", "ETF/component divergence", "Opening range breakout", "Spread quality"],
+    probabilityOverlay: {
+      mode: "historical-only",
+      label: "Historical prior only",
+      note: "There usually is no clean direct prediction-market contract for single-name sympathy earnings setups, so the board leans on historical priors until we have enough of our own logged cases.",
+      marketInfluence: 0,
+      sources: [],
+      scenarioWeights: [
+        { scenarioName: "Leader beats, laggards catch up", historicalPrior: 28, marketImplied: null, note: "Best upside read-through case." },
+        { scenarioName: "Good but partially priced", historicalPrior: 26, marketImplied: null, note: "Positive, but already crowded." },
+        { scenarioName: "Mixed guide / chop", historicalPrior: 21, marketImplied: null, note: "Theta tax scenario." },
+        { scenarioName: "Guide disappointment", historicalPrior: 25, marketImplied: null, note: "Downside de-rating case." },
+      ],
+    },
     portfolioLegSeeds: [
       { symbol: "AMD", type: "call", distancePct: 3.0, premium: 2.15, contracts: 2, dte: 7, label: "Sympathy call", thesis: "Bullish read-through" },
       { symbol: "SMH", type: "call", distancePct: 2.1, premium: 2.38, contracts: 2, dte: 7, label: "Sector call", thesis: "Cleaner basket follow-through" },
@@ -541,10 +713,13 @@ export function buildWeeklyScanSnapshot(now = new Date()): WeeklyScanSnapshot {
   const weekEnd = addDays(weekStart, 4);
   const events = EVENT_TEMPLATES.map((template) => {
     const eventDate = addDays(weekStart, template.dayOffset);
+    const probabilityOverlay = buildProbabilityOverlay(template.probabilityOverlay);
     return {
       ...template,
       eventDate: isoDate(eventDate),
       eventLabel: formatDay(eventDate),
+      probabilityOverlay,
+      portfolioScenarios: applyBlendedProbabilities(template.portfolioScenarios, probabilityOverlay),
       ranking: {
         ...template.ranking,
         composite: compositeScore(template.ranking, template.watchlistTickers.length, template.kind),
@@ -558,6 +733,7 @@ export function buildWeeklyScanSnapshot(now = new Date()): WeeklyScanSnapshot {
     weekRangeLabel: `${formatDay(weekStart)} - ${formatDay(weekEnd)}`,
     notes: [
       "Seeded first iteration means the scenario weights, implied move inputs, and starter premiums are curated defaults, not live vendor data yet.",
+      "Prediction-market inputs are now blended into the weekly scan when a clean contract exists, but they are still seeded placeholders until we connect real APIs.",
       "Replace spot, implied move, and premiums with live numbers before trading. The current strike ladders reset off the spot you enter.",
       "The ranking is there to narrow attention on Monday, not to auto-trade the setup.",
       "Binary outcomes are not stored yet. To make the planner learn over time on Vercel, the next step is persisting outcome rows and pre-event option snapshots in a database.",
