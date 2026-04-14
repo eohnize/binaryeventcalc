@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getEventLabRuntimeDiagnostics,
+  loadLatestScanRunSummary,
   getWeeklyScanSnapshot,
   hasEventLabDatabase,
   persistWeeklyScanSnapshot,
@@ -12,10 +13,12 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const snapshot = await getWeeklyScanSnapshot();
   const diagnostics = getEventLabRuntimeDiagnostics();
+  const latestRunSummary = await loadLatestScanRunSummary(snapshot.weekStartDate);
   return NextResponse.json({
     ...snapshot,
     storage: hasEventLabDatabase() ? "database-or-fallback" : "seeded-only",
     diagnostics,
+    latestRunSummary,
   });
 }
 
@@ -58,5 +61,6 @@ export async function POST(request: Request) {
     ok: true,
     scanRunId: result.scanRunId,
     weekStartDate: snapshot.weekStartDate,
+    structuredCounts: result.structuredCounts ?? null,
   });
 }

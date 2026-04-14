@@ -132,6 +132,19 @@ export type WeeklyScanSnapshot = {
   events: EventCandidate[];
 };
 
+export type EvaluatedScenario = {
+  scenario: PortfolioScenario;
+  totalPnl: number;
+  roi: number;
+  symbolMoves: Array<{
+    symbol: string;
+    movePct: number;
+    spot: number;
+    spotAtEvent: number;
+    impliedMovePct: number;
+  }>;
+};
+
 type EventTemplate = Omit<EventCandidate, "eventDate" | "eventLabel" | "ranking" | "probabilityOverlay"> & {
   dayOffset: number;
   ranking: Omit<ScoreBreakdown, "composite">;
@@ -309,6 +322,54 @@ export function estimateOptionPrice(
   const timeRemaining = Math.max((dte - 1) / dte, 0.1);
   const timeValue = premium * 0.45 * timeRemaining * Math.max(ivBump, 0.2);
   return Math.max(intrinsic + timeValue, 0.02);
+}
+
+export function evaluatePortfolioScenarios(
+  event: EventCandidate,
+  legs: PlannerLeg[] = buildPortfolioStarterLegs(event),
+  spotBySymbol?: Record<string, number>,
+  impliedMoveBySymbol?: Record<string, number>,
+): EvaluatedScenario[] {
+  const resolvedSpotBySymbol = Object.fromEntries(
+    event.tickerProfiles.map((profile) => [profile.symbol, spotBySymbol?.[profile.symbol] ?? profile.seedSpot]),
+  );
+  const resolvedImpliedMoveBySymbol = Object.fromEntries(
+    event.tickerProfiles.map((profile) => [
+      profile.symbol,
+      impliedMoveBySymbol?.[profile.symbol] ?? profile.impliedMovePct,
+    ]),
+  );
+  const totalInvested = legs.reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
+
+  return event.portfolioScenarios.map((scenario) => {
+    const symbolMoves = event.tickerProfiles.map((profile) => {
+      const spot = resolvedSpotBySymbol[profile.symbol] ?? profile.seedSpot;
+      const movePct = scenario.moves[profile.symbol] ?? 0;
+      return {
+        symbol: profile.symbol,
+        movePct,
+        spot,
+        spotAtEvent: spot * (1 + movePct / 100),
+        impliedMovePct: resolvedImpliedMoveBySymbol[profile.symbol] ?? profile.impliedMovePct,
+      };
+    });
+    const moveBySymbol = Object.fromEntries(symbolMoves.map((move) => [move.symbol, move]));
+    const totalPnl = legs.reduce((sum, leg) => {
+      const currentSpot = moveBySymbol[leg.symbol]?.spot ?? 100;
+      const spotAtEvent = moveBySymbol[leg.symbol]?.spotAtEvent ?? currentSpot;
+      const exit = estimateOptionPrice(leg.type, leg.strike, leg.premium, leg.dte, spotAtEvent, currentSpot);
+      const cost = leg.premium * leg.contracts * 100;
+      const value = exit * leg.contracts * 100;
+      return sum + (value - cost);
+    }, 0);
+
+    return {
+      scenario,
+      totalPnl,
+      roi: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
+      symbolMoves,
+    };
+  });
 }
 
 const WATCHLIST: WatchlistGroup[] = [
