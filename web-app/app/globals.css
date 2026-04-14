@@ -1090,6 +1090,34 @@ a {
   margin-bottom: 4px;
 }
 
+.scan-review-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.scan-review-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.scan-review-label {
+  color: var(--muted);
+}
+
+.scan-review-value {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.scan-review-prob {
+  color: var(--gold);
+  font-weight: 700;
+}
+
 .scan-event-row {
   width: 100%;
   padding: 16px;

@@ -158,18 +158,24 @@ export default async function WeeklyScanReviewPage() {
                   </span>
                 </div>
 
-                <p>
-                  Planner favorite: <strong>{outcome.plannerTopScenarioName ?? "N/A"}</strong> at{" "}
-                  <strong>{fmtProbability(outcome.plannerTopScenarioProbability)}</strong>. Realized closest scenario:{" "}
-                  <strong>{outcome.closestScenarioName ?? "N/A"}</strong> at{" "}
-                  <strong>{fmtProbability(outcome.realizedScenarioBlendedProbability)}</strong>.
-                </p>
+                <div className="scan-review-summary">
+                  <div className="scan-review-line">
+                    <span className="scan-review-label">Planner favorite</span>
+                    <span className="scan-review-value">{outcome.plannerTopScenarioName ?? "N/A"}</span>
+                    <span className="scan-review-prob">{fmtProbability(outcome.plannerTopScenarioProbability)}</span>
+                  </div>
+                  <div className="scan-review-line">
+                    <span className="scan-review-label">Realized closest scenario</span>
+                    <span className="scan-review-value">{outcome.closestScenarioName ?? "N/A"}</span>
+                    <span className="scan-review-prob">{fmtProbability(outcome.realizedScenarioBlendedProbability)}</span>
+                  </div>
+                </div>
 
                 <div className="scan-mini-grid">
                   <article className="scan-mini-card">
                     <span className="level-kicker">Resolved</span>
                     <strong>{fmtDateTime(outcome.resolvedAt ?? outcome.createdAt)}</strong>
-                    <p>{outcome.eventLabel}</p>
+                    <p>Scheduled {outcome.eventLabel}</p>
                   </article>
                   <article className="scan-mini-card">
                     <span className="level-kicker">Probability Gap</span>
