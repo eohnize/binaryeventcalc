@@ -46,7 +46,12 @@ function qualityTone(quality: "high" | "medium" | "low") {
 }
 
 function catalystLabel(event: EventCandidate) {
-  if (event.catalystName?.trim()) return event.catalystName.trim();
+  const liveCatalystName =
+    "catalystName" in event && typeof event.catalystName === "string"
+      ? event.catalystName.trim()
+      : "";
+
+  if (liveCatalystName) return liveCatalystName;
 
   const labels: Record<string, string> = {
     "inflation-reset": "PPI",
