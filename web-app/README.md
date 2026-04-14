@@ -70,6 +70,34 @@ The weekly scan can now read from and write to Postgres when `DATABASE_URL` is c
 x-event-lab-key: <EVENT_LAB_ADMIN_KEY>
 ```
 
+Additional research endpoints:
+
+- `GET /weekly-scan/history`
+  - returns recent scan runs plus recent logged outcomes
+- `GET /weekly-scan/outcomes`
+  - returns recent logged outcomes
+- `POST /weekly-scan/outcomes`
+  - writes or updates a realized outcome against the latest matching event candidate
+
+Example outcome payload:
+
+```json
+{
+  "eventKey": "energy-shock-board",
+  "weekStartDate": "2026-04-13",
+  "resolvedAt": "2026-04-17T09:30:00.000Z",
+  "realizedBucket": "moderate-escalation",
+  "closestScenarioName": "Moderate escalation",
+  "realizedSummary": "Oil stayed bid and the broad market hedges paid, but the full tail did not materialize.",
+  "realizedMoveMap": {
+    "XOM": 4.4,
+    "XLE": 3.9,
+    "SPY": -1.2,
+    "QQQ": -1.8
+  }
+}
+```
+
 This keeps the weekly scan deployable even before live vendors are wired in.
 
 ## First-time deployment
