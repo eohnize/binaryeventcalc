@@ -8,6 +8,7 @@ import {
   type EventKind,
   type PlannerLeg,
   type PortfolioScenario,
+  type ScenarioProbabilityWeight,
   type TickerProfile,
   type WeeklyScanSnapshot,
 } from "../lib/weekly-event-lab";
@@ -90,6 +91,13 @@ type ScenarioResult = {
 
 type TickerInputState = Record<string, { spot: string; impliedMove: string }>;
 type ScenarioInputState = Record<string, { probability: string; moves: Record<string, string> }>;
+type ScenarioRow = {
+  scenario: PortfolioScenario;
+  rawProbability: number;
+  normalizedProbability: number;
+  probabilityWeight: ScenarioProbabilityWeight | undefined;
+  result: ScenarioResult;
+};
 
 function buildTickerInputs(event: EventCandidate): TickerInputState {
   return Object.fromEntries(
@@ -316,7 +324,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
     setScenarioInputs(buildScenarioInputs(selectedEvent));
   }
 
-  const editableScenarios = selectedEvent.portfolioScenarios.map((scenario) => ({
+  const editableScenarios: PortfolioScenario[] = selectedEvent.portfolioScenarios.map((scenario) => ({
     ...scenario,
     probability: safeNonNegativeNumber(
       scenarioInputs[scenario.name]?.probability ?? "",
@@ -330,13 +338,13 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
           scenario.moves[profile.symbol] ?? 0,
         ),
       ]),
-    ),
+    ) as Record<string, number>,
   }));
   const rawProbabilityTotal = editableScenarios.reduce((sum, scenario) => sum + scenario.probability, 0);
   const probabilityScale = rawProbabilityTotal > 0 ? 100 / rawProbabilityTotal : 0;
-  const scenarioRows = editableScenarios.map((scenario) => {
+  const scenarioRows: ScenarioRow[] = editableScenarios.map((scenario) => {
     const normalizedProbability = probabilityScale > 0 ? scenario.probability * probabilityScale : 0;
-    const normalizedScenario = {
+    const normalizedScenario: PortfolioScenario = {
       ...scenario,
       probability: normalizedProbability,
     };
