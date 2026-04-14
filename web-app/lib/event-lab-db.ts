@@ -41,6 +41,8 @@ function getSql() {
   return neon(databaseUrl);
 }
 
+type SqlClient = NonNullable<ReturnType<typeof getSql>>;
+
 function parseSnapshot(value: WeeklyScanSnapshot | string | null | undefined) {
   if (!value) return null;
   if (typeof value === "string") {
@@ -114,7 +116,7 @@ function normalizeCount(value: number | string | null | undefined) {
 }
 
 async function persistStructuredEventRows(
-  sql: ReturnType<typeof neon>,
+  sql: SqlClient,
   scanRunId: string,
   snapshot: WeeklyScanSnapshot,
 ) {
