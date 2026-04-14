@@ -46,6 +46,8 @@ function qualityTone(quality: "high" | "medium" | "low") {
 }
 
 function catalystLabel(event: EventCandidate) {
+  if (event.catalystName?.trim()) return event.catalystName.trim();
+
   const labels: Record<string, string> = {
     "inflation-reset": "PPI",
     "ai-read-through": "NVDA Earnings",
