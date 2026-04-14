@@ -1347,6 +1347,47 @@ a {
   gap: 10px;
 }
 
+.scan-builder-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(244, 193, 95, 0.18);
+  background: linear-gradient(180deg, rgba(32, 25, 10, 0.26), rgba(10, 17, 25, 0.94));
+}
+
+.scan-builder-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.scan-builder-card {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(8, 14, 22, 0.84);
+  display: grid;
+  gap: 12px;
+}
+
+.scan-builder-card.selected {
+  border-color: rgba(244, 193, 95, 0.3);
+  box-shadow: 0 0 0 1px rgba(244, 193, 95, 0.16);
+}
+
+.scan-builder-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.scan-builder-input-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .scan-leg-table {
   width: 100%;
   border-collapse: separate;
@@ -1521,7 +1562,8 @@ a {
   .scan-symbol-grid,
   .scan-probability-grid,
   .scan-event-grid,
-  .scan-review-grid {
+  .scan-review-grid,
+  .scan-builder-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1546,6 +1588,10 @@ a {
   .candidate-side {
     text-align: left;
     justify-items: start;
+  }
+
+  .scan-builder-input-grid {
+    grid-template-columns: 1fr;
   }
 }
 

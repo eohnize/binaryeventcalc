@@ -55,6 +55,16 @@ function safeNumber(value: string, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function safeSignedNumber(value: string, fallback: number) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function safeNonNegativeNumber(value: string, fallback: number) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 type ScenarioResult = {
   totalPnl: number;
   roi: number;
@@ -79,6 +89,7 @@ type ScenarioResult = {
 };
 
 type TickerInputState = Record<string, { spot: string; impliedMove: string }>;
+type ScenarioInputState = Record<string, { probability: string; moves: Record<string, string> }>;
 
 function buildTickerInputs(event: EventCandidate): TickerInputState {
   return Object.fromEntries(
@@ -92,12 +103,32 @@ function buildTickerInputs(event: EventCandidate): TickerInputState {
   );
 }
 
+function buildScenarioInputs(event: EventCandidate): ScenarioInputState {
+  return Object.fromEntries(
+    event.portfolioScenarios.map((scenario) => [
+      scenario.name,
+      {
+        probability: scenario.probability.toFixed(0),
+        moves: Object.fromEntries(
+          event.tickerProfiles.map((profile) => [
+            profile.symbol,
+            (scenario.moves[profile.symbol] ?? 0).toFixed(1),
+          ]),
+        ),
+      },
+    ]),
+  );
+}
+
 export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const [kindFilter, setKindFilter] = useState<"all" | EventKind>("all");
   const [selectedEventId, setSelectedEventId] = useState(snapshot.events[0]?.id ?? "");
   const [selectedSymbol, setSelectedSymbol] = useState(snapshot.events[0]?.primarySymbol ?? "");
   const [tickerInputs, setTickerInputs] = useState<TickerInputState>(
     snapshot.events[0] ? buildTickerInputs(snapshot.events[0]) : {},
+  );
+  const [scenarioInputs, setScenarioInputs] = useState<ScenarioInputState>(
+    snapshot.events[0] ? buildScenarioInputs(snapshot.events[0]) : {},
   );
   const [selectedScenarioName, setSelectedScenarioName] = useState(snapshot.events[0]?.portfolioScenarios[0]?.name ?? "");
   const [legs, setLegs] = useState<PlannerLeg[]>([]);
@@ -130,6 +161,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   useEffect(() => {
     if (!selectedEvent) return;
     setTickerInputs(buildTickerInputs(selectedEvent));
+    setScenarioInputs(buildScenarioInputs(selectedEvent));
     setLegs(buildPortfolioStarterLegs(selectedEvent));
     setSelectedScenarioName(selectedEvent.portfolioScenarios[0]?.name ?? "");
   }, [selectedEvent]);
@@ -257,11 +289,66 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
     }));
   }
 
-  const scenarioRows = selectedEvent.portfolioScenarios.map((scenario) => ({
-    scenario,
-    probabilityWeight: probabilityWeightByName.get(scenario.name),
-    result: calculateScenario(scenario),
+  function updateScenarioInput(
+    scenarioName: string,
+    field: "probability" | "move",
+    value: string,
+    symbol?: string,
+  ) {
+    setScenarioInputs((current) => ({
+      ...current,
+      [scenarioName]: {
+        probability: current[scenarioName]?.probability ?? "",
+        moves: current[scenarioName]?.moves ?? {},
+        ...(field === "probability"
+          ? { probability: value }
+          : {
+              moves: {
+                ...(current[scenarioName]?.moves ?? {}),
+                [symbol ?? ""]: value,
+              },
+            }),
+      },
+    }));
+  }
+
+  function resetScenarioInputs() {
+    setScenarioInputs(buildScenarioInputs(selectedEvent));
+  }
+
+  const editableScenarios = selectedEvent.portfolioScenarios.map((scenario) => ({
+    ...scenario,
+    probability: safeNonNegativeNumber(
+      scenarioInputs[scenario.name]?.probability ?? "",
+      scenario.probability,
+    ),
+    moves: Object.fromEntries(
+      selectedEvent.tickerProfiles.map((profile) => [
+        profile.symbol,
+        safeSignedNumber(
+          scenarioInputs[scenario.name]?.moves?.[profile.symbol] ?? "",
+          scenario.moves[profile.symbol] ?? 0,
+        ),
+      ]),
+    ),
   }));
+  const rawProbabilityTotal = editableScenarios.reduce((sum, scenario) => sum + scenario.probability, 0);
+  const probabilityScale = rawProbabilityTotal > 0 ? 100 / rawProbabilityTotal : 0;
+  const scenarioRows = editableScenarios.map((scenario) => {
+    const normalizedProbability = probabilityScale > 0 ? scenario.probability * probabilityScale : 0;
+    const normalizedScenario = {
+      ...scenario,
+      probability: normalizedProbability,
+    };
+
+    return {
+      scenario: normalizedScenario,
+      rawProbability: scenario.probability,
+      normalizedProbability,
+      probabilityWeight: probabilityWeightByName.get(scenario.name),
+      result: calculateScenario(normalizedScenario),
+    };
+  });
   const bestRow = scenarioRows.reduce((best, row) => (row.result.totalPnl > best.result.totalPnl ? row : best), scenarioRows[0]);
   const worstRow = scenarioRows.reduce((worst, row) => (row.result.totalPnl < worst.result.totalPnl ? row : worst), scenarioRows[0]);
   const weightedExpectedPnl = scenarioRows.reduce(
@@ -279,6 +366,24 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
     const multiple = move.impliedMovePct > 0 ? Math.abs(move.movePct) / move.impliedMovePct : 0;
     return Math.max(max, multiple);
   }, 0);
+  const favoriteScenarioRow = scenarioRows.reduce(
+    (best, row) => (row.normalizedProbability > best.normalizedProbability ? row : best),
+    scenarioRows[0],
+  );
+  const positiveScenarioWeight = scenarioRows.reduce(
+    (sum, row) => sum + (row.result.totalPnl > 0 ? row.normalizedProbability : 0),
+    0,
+  );
+  const negativeScenarioWeight = scenarioRows.reduce(
+    (sum, row) => sum + (row.result.totalPnl < 0 ? row.normalizedProbability : 0),
+    0,
+  );
+  const stressScenarioCount = scenarioRows.filter((row) =>
+    row.result.symbolMoves.some((move) =>
+      move.impliedMovePct > 0 ? Math.abs(move.movePct) / move.impliedMovePct > 2 : false,
+    ),
+  ).length;
+  const probabilityBalanced = Math.abs(rawProbabilityTotal - 100) <= 1;
   const launchLeg = legs[0];
   const legacyHref = `/?ticker=${encodeURIComponent(selectedProfile.symbol)}&price=${encodeURIComponent(
     (spotBySymbol[selectedProfile.symbol] ?? selectedProfile.seedSpot).toFixed(2),
@@ -547,8 +652,8 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               <div className="scan-method-grid">
                 <article className="scan-method-card">
                   <span className="level-kicker">Outcome Memory</span>
-                  <strong>Not Stored Yet</strong>
-                  <p>This version does not write event outcomes to a database yet, so the weights are seeded rather than learned from prior weeks.</p>
+                  <strong>Review loop live</strong>
+                  <p>Weekly scans and realized outcomes now persist to Postgres, and the review log lets us compare the planner&apos;s favorite branch with what actually resolved.</p>
                 </article>
                 <article className="scan-method-card">
                   <span className="level-kicker">Prediction Market Blend</span>
@@ -570,6 +675,126 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   <strong>{fmtMultiple(selectedScenarioStress)} max implied stretch</strong>
                   <p>Anything much above roughly 2.0x the seeded implied move should be treated as a stress case, not a base expectation.</p>
                 </article>
+              </div>
+
+              <div className="scan-builder-panel">
+                <div className="scan-detail-head compact">
+                  <div>
+                    <h3>Scenario Builder</h3>
+                    <p>
+                      Tune scenario weights and move maps before you size the trade. The planner normalizes your weights
+                      back to 100% so we can see the book shape even if your first pass is a little rough.
+                    </p>
+                  </div>
+                  <button type="button" className="secondary-btn" onClick={resetScenarioInputs}>
+                    Reset Scenarios
+                  </button>
+                </div>
+
+                <div className="scan-mini-grid">
+                  <article className="scan-mini-card">
+                    <span className="level-kicker">Weight Total</span>
+                    <strong>{rawProbabilityTotal.toFixed(0)}%</strong>
+                    <p className={probabilityBalanced ? "bull-text" : "bear-text"}>
+                      {probabilityBalanced
+                        ? "Balanced around 100%"
+                        : "Inputs are auto-normalized for analysis until you rebalance them"}
+                    </p>
+                  </article>
+                  <article className="scan-mini-card">
+                    <span className="level-kicker">Favorite Branch</span>
+                    <strong>{favoriteScenarioRow.scenario.name}</strong>
+                    <p>{favoriteScenarioRow.normalizedProbability.toFixed(0)}% normalized weight</p>
+                  </article>
+                  <article className="scan-mini-card">
+                    <span className="level-kicker">Stress Cases</span>
+                    <strong>{stressScenarioCount} / {scenarioRows.length}</strong>
+                    <p className={stressScenarioCount > 1 ? "bear-text" : "bull-text"}>
+                      {stressScenarioCount > 1 ? "More than one branch is beyond 2.0x implied" : "Tail risk is contained to one branch or less"}
+                    </p>
+                  </article>
+                  <article className="scan-mini-card">
+                    <span className="level-kicker">Payoff Balance</span>
+                    <strong>{positiveScenarioWeight.toFixed(0)}% / {negativeScenarioWeight.toFixed(0)}%</strong>
+                    <p>Normalized winning-weight versus losing-weight across the current structure.</p>
+                  </article>
+                </div>
+
+                <div className="scan-builder-grid">
+                  {scenarioRows.map(({ scenario, probabilityWeight, rawProbability, normalizedProbability, result }) => {
+                    const maxStretch = result.symbolMoves.reduce((max, move) => {
+                      const multiple = move.impliedMovePct > 0 ? Math.abs(move.movePct) / move.impliedMovePct : 0;
+                      return Math.max(max, multiple);
+                    }, 0);
+
+                    return (
+                      <article
+                        key={`builder-${scenario.name}`}
+                        className={`scan-builder-card ${selectedScenarioRow.scenario.name === scenario.name ? "selected" : ""}`}
+                      >
+                        <div className="scan-review-head">
+                          <div>
+                            <span className="level-kicker">{scenario.name}</span>
+                            <p>{scenario.note}</p>
+                          </div>
+                          <button
+                            type="button"
+                            className={`scan-tab ${selectedScenarioRow.scenario.name === scenario.name ? "active" : ""}`}
+                            onClick={() => setSelectedScenarioName(scenario.name)}
+                          >
+                            Review
+                          </button>
+                        </div>
+
+                        <div className="scan-builder-input-grid">
+                          <label className="field-row compact-input">
+                            <span>Weight %</span>
+                            <input
+                              className="scan-input"
+                              value={scenarioInputs[scenario.name]?.probability ?? rawProbability.toFixed(0)}
+                              onChange={(event) =>
+                                updateScenarioInput(scenario.name, "probability", event.target.value)
+                              }
+                              inputMode="decimal"
+                            />
+                          </label>
+                          {selectedEvent.tickerProfiles.map((profile) => (
+                            <label key={`${scenario.name}-${profile.symbol}`} className="field-row compact-input">
+                              <span>{profile.symbol} move %</span>
+                              <input
+                                className="scan-input"
+                                value={scenarioInputs[scenario.name]?.moves?.[profile.symbol] ?? "0.0"}
+                                onChange={(event) =>
+                                  updateScenarioInput(scenario.name, "move", event.target.value, profile.symbol)
+                                }
+                                inputMode="decimal"
+                              />
+                            </label>
+                          ))}
+                        </div>
+
+                        {probabilityWeight ? (
+                          <div className="scan-probability-row">
+                            <span>Hist {fmtProbability(probabilityWeight.historicalPrior)}</span>
+                            <span>Market {fmtProbability(probabilityWeight.marketImplied)}</span>
+                            <span>Seed Blend {fmtProbability(probabilityWeight.blendedProbability)}</span>
+                          </div>
+                        ) : null}
+
+                        <div className="scan-chip-row">
+                          <span className="scan-chip muted">Input {rawProbability.toFixed(0)}%</span>
+                          <span className="scan-chip muted">Normalized {normalizedProbability.toFixed(0)}%</span>
+                          <span className={`scan-chip ${maxStretch > 2 ? "bear-chip" : "bull-chip"}`}>
+                            {fmtMultiple(maxStretch)} max stretch
+                          </span>
+                          <span className={`scan-chip ${result.totalPnl >= 0 ? "bull-chip" : "bear-chip"}`}>
+                            {compactMoney(result.totalPnl)}
+                          </span>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="scan-table-wrap">
@@ -629,7 +854,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               </div>
 
               <div className="scan-scenario-list">
-                {scenarioRows.map(({ scenario, probabilityWeight, result }) => (
+                {scenarioRows.map(({ scenario, probabilityWeight, result, rawProbability, normalizedProbability }) => (
                   <button
                     key={scenario.name}
                     type="button"
@@ -655,7 +880,11 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                       ))}
                     </div>
                     <div className="scan-scenario-metrics">
-                      <span>{scenario.probability}% weight</span>
+                      <span>
+                        {probabilityBalanced
+                          ? `${normalizedProbability.toFixed(0)}% weight`
+                          : `${rawProbability.toFixed(0)}% input | ${normalizedProbability.toFixed(0)}% normalized`}
+                      </span>
                       <span className={result.totalPnl >= 0 ? "bull-text" : "bear-text"}>{compactMoney(result.totalPnl)}</span>
                       <span>{result.roi.toFixed(0)}% ROI</span>
                       <span>
@@ -687,7 +916,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   ))}
                 </div>
                 <p className="scan-inline-note">
-                  Scenario weights are now blended from historical priors and seeded prediction-market bias when available. Implied moves and option prices are still starter inputs until we wire live vendors.
+                  Scenario weights are analyzed on your current edited mix{probabilityBalanced ? "" : ` and normalized from ${rawProbabilityTotal.toFixed(0)}% back to 100%`} so the payoff math stays comparable. Implied moves and option prices are still starter inputs until we wire live vendors.
                 </p>
                 <div className="scan-breakdown-grid">
                   {selectedScenarioRow.result.legResults.map((leg) => (
