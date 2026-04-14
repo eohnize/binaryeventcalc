@@ -879,7 +879,8 @@ a {
 
 .scan-hero-copy h1,
 .scan-workbench-head h2,
-.scan-detail-head h3 {
+.scan-detail-head h3,
+.scan-play-head h3 {
   margin: 0;
   font-size: clamp(1.7rem, 3vw, 2.4rem);
   line-height: 1.04;
@@ -890,6 +891,28 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.scan-title-with-tag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.scan-title-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 193, 95, 0.24);
+  background: rgba(76, 58, 15, 0.32);
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .scan-chip {
@@ -928,6 +951,30 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.scan-priority-strip {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(244, 193, 95, 0.2);
+  background: linear-gradient(180deg, rgba(54, 42, 12, 0.42), rgba(20, 17, 8, 0.5));
+}
+
+.scan-priority-strip strong {
+  display: block;
+  margin: 0;
+}
+
+.scan-priority-strip p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.scan-priority-strip.compact {
+  gap: 4px;
 }
 
 .scan-summary-grid,
@@ -1097,6 +1144,7 @@ a {
 }
 
 .scan-board-title p,
+.scan-board-why,
 .scan-board-stats,
 .scan-play-head p,
 .scan-play-leg p {
@@ -1105,8 +1153,11 @@ a {
   line-height: 1.45;
 }
 
-.scan-board-odds,
-.scan-play-legs {
+.scan-board-why {
+  font-size: 0.92rem;
+}
+
+.scan-board-odds {
   display: grid;
   gap: 10px;
 }
@@ -1117,12 +1168,12 @@ a {
   border: 1px solid rgba(99, 167, 255, 0.22);
   background: linear-gradient(180deg, rgba(18, 31, 48, 0.78), rgba(10, 17, 25, 0.96));
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .scan-play-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1133,6 +1184,12 @@ a {
   background: rgba(8, 14, 22, 0.84);
   display: grid;
   gap: 6px;
+}
+
+.scan-play-legs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .scan-review-grid {

@@ -45,11 +45,34 @@ function qualityTone(quality: "high" | "medium" | "low") {
   return "muted";
 }
 
-function scoreHint(event: EventCandidate) {
-  if (event.ranking.marketImpact >= 95) return "Broad market mover";
-  if (event.ranking.asymmetry >= 90) return "Best asymmetry";
-  if (event.ranking.tickerSensitivity >= 90) return "Strong ticker transmission";
-  return "Solid weekly candidate";
+function catalystLabel(event: EventCandidate) {
+  const labels: Record<string, string> = {
+    "inflation-reset": "PPI",
+    "ai-read-through": "NVDA Earnings",
+    "energy-shock-board": "Oil Shock",
+  };
+
+  return labels[event.id] ?? event.marketProxy.split("/")[0]?.trim() ?? event.kind.toUpperCase();
+}
+
+function priorityReason(event: EventCandidate, rewardRisk: number) {
+  if (event.kind === "macro") {
+    return "One print can move SPY, QQQ, and SMH together, so the transmission path is the cleanest on the board.";
+  }
+
+  if (event.kind === "earnings") {
+    return "The leader's print can spill into less-expensive sympathy names, which is usually cleaner than chasing the headline stock itself.";
+  }
+
+  if (event.kind === "commodity") {
+    return "Energy and index hedges can both pay in opposite tails, so the structure has more than one payout engine.";
+  }
+
+  if (rewardRisk >= 2.5) {
+    return "The starter basket already clears the 2.5x payoff floor without needing exotic sizing.";
+  }
+
+  return "It combines liquid chains, a clear catalyst path, and a usable payoff profile.";
 }
 
 function safeNumber(value: string, fallback: number) {
@@ -242,7 +265,6 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const totalInvested = legs.reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
   const callCost = legs.filter((leg) => leg.type === "call").reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
   const putCost = legs.filter((leg) => leg.type === "put").reduce((sum, leg) => sum + leg.premium * leg.contracts * 100, 0);
-  const uniqueCoverage = new Set(snapshot.events.flatMap((event) => event.watchlistTickers)).size;
   const probabilityWeightByName = new Map(
     selectedEvent.probabilityOverlay.scenarioWeights.map((weight) => [weight.scenarioName, weight]),
   );
@@ -466,9 +488,13 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
       rewardRisk,
       passesGuardrail: rewardRisk >= 2.5,
       weightedExpectancy,
-      structureSummary: summarizeStructure(starterLegs),
+      priorityReason: priorityReason(event, rewardRisk),
     };
   });
+  const topBoardRow = boardRows[0];
+  const selectedPriorityReason =
+    boardRows.find((row) => row.event.id === selectedEvent.id)?.priorityReason ??
+    priorityReason(selectedEvent, rewardRiskMultiple);
   const legacyHref = `/?ticker=${encodeURIComponent(selectedProfile.symbol)}&price=${encodeURIComponent(
     (spotBySymbol[selectedProfile.symbol] ?? selectedProfile.seedSpot).toFixed(2),
   )}${launchLeg ? `&strike=${encodeURIComponent(launchLeg.strike.toFixed(2))}&dte=${encodeURIComponent(String(launchLeg.dte))}` : ""}`;
@@ -490,48 +516,29 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               </span>
             ))}
           </div>
+          {topBoardRow ? (
+            <div className="scan-priority-strip">
+              <span className="level-kicker">Top Pick This Week</span>
+              <strong>
+                {topBoardRow.event.title} | {catalystLabel(topBoardRow.event)}
+              </strong>
+              <p>{topBoardRow.priorityReason}</p>
+            </div>
+          ) : null}
           <div className="scan-review-actions">
             <a className="secondary-btn" href="/weekly-scan/review">
               Open Review Log
             </a>
           </div>
-          <ul className="scan-note-list">
-            {snapshot.notes.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="scan-summary-grid">
-          <article className="scan-stat-card">
-            <span className="level-kicker">Top Event</span>
-            <strong>{snapshot.events[0]?.title ?? "--"}</strong>
-            <p>{snapshot.events[0] ? `${snapshot.events[0].ranking.composite}/100 scan score` : "No event seeded yet."}</p>
-          </article>
-          <article className="scan-stat-card">
-            <span className="level-kicker">Coverage</span>
-            <strong>{uniqueCoverage} tickers</strong>
-            <p>Across your core book, macro vehicles, and a smaller beta satellite bucket.</p>
-          </article>
-          <article className="scan-stat-card">
-            <span className="level-kicker">Data Mode</span>
-            <strong>Seeded + Blend</strong>
-            <p>Built to stay deployable on Vercel while we wire in live calendars, prediction markets, and options data next.</p>
-          </article>
-          <article className="scan-stat-card">
-            <span className="level-kicker">JSON Hook</span>
-            <strong>/weekly-scan/data</strong>
-            <p>A separate data endpoint for future cron jobs, without touching the legacy calculator backend.</p>
-          </article>
         </div>
       </section>
 
       <section className="shell-card scan-workbench">
         <div className="scan-workbench-head">
           <div>
-            <span className="eyebrow">Event Ranking</span>
+            <span className="eyebrow">Catalyst Board</span>
             <h2>{snapshot.weekRangeLabel}</h2>
-            <p>Filter the board, pick the event, then swap in live spot, implied move, and premiums before planning the trade.</p>
+            <p>Use the board to rank what matters, then open one trade ticket instead of a full research dump.</p>
           </div>
           <div className="scan-filter-row">
             {(["all", "macro", "commodity", "earnings"] as const).map((kind) => (
@@ -548,7 +555,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
         </div>
 
         <div className="scan-board-list">
-          {boardRows.map(({ event, odds, rewardRisk, passesGuardrail, weightedExpectancy, structureSummary }, index) => (
+          {boardRows.map(({ event, odds, rewardRisk, passesGuardrail, weightedExpectancy, priorityReason }, index) => (
             <button
               key={event.id}
               type="button"
@@ -559,9 +566,12 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 <div className="scan-board-title">
                   <span className="scan-rank">#{index + 1}</span>
                   <div>
-                    <strong>{event.title}</strong>
+                    <div className="scan-title-with-tag">
+                      <strong>{event.title}</strong>
+                      <span className="scan-title-tag">{catalystLabel(event)}</span>
+                    </div>
                     <p>
-                      {event.eventLabel} | {event.timeLabel} | {scoreHint(event)}
+                      {event.eventLabel} | {event.timeLabel} | {event.kind}
                     </p>
                   </div>
                 </div>
@@ -574,14 +584,16 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 </div>
               </div>
 
+              <p className="scan-board-why">{priorityReason}</p>
+
               <div className="scan-board-odds">
-                <span className="scan-chip bull-chip">Up {fmtProbability(Number(odds.up.toFixed(0)))}</span>
-                <span className="scan-chip muted">Flat {fmtProbability(Number(odds.flat.toFixed(0)))}</span>
-                <span className="scan-chip bear-chip">Down {fmtProbability(Number(odds.down.toFixed(0)))}</span>
+                <span className="scan-chip bull-chip">{event.primarySymbol} Up {fmtProbability(Number(odds.up.toFixed(0)))}</span>
+                <span className="scan-chip muted">{event.primarySymbol} Flat {fmtProbability(Number(odds.flat.toFixed(0)))}</span>
+                <span className="scan-chip bear-chip">{event.primarySymbol} Down {fmtProbability(Number(odds.down.toFixed(0)))}</span>
               </div>
 
               <div className="scan-board-stats">
-                <span>{structureSummary}</span>
+                <span>{event.ranking.composite}/100 score</span>
                 <span className={passesGuardrail ? "bull-text" : "bear-text"}>
                   {passesGuardrail ? `${fmtMultiple(rewardRisk)} R:R` : `${fmtMultiple(rewardRisk)} needs work`}
                 </span>
@@ -596,49 +608,45 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
         <section className="scan-play-card">
           <div className="scan-play-head">
             <div>
-              <span className="eyebrow">Selected Play</span>
-              <h3>{selectedEvent.title}</h3>
+              <span className="eyebrow">Trade Ticket</span>
+              <div className="scan-title-with-tag">
+                <h3>{selectedEvent.title}</h3>
+                <span className="scan-title-tag">{catalystLabel(selectedEvent)}</span>
+              </div>
               <p>{selectedEvent.summary}</p>
+              <p className="scan-inline-note">
+                {selectedEvent.eventLabel} | {selectedEvent.timeLabel} | {selectedEvent.kind} | Primary ticker {selectedEvent.primarySymbol}
+              </p>
             </div>
             <div className="scan-chip-row">
-              <span className="scan-chip muted">{selectedEvent.kind}</span>
               <span className={`scan-chip ${passesGuardrail ? "bull-chip" : "bear-chip"}`}>
                 {passesGuardrail ? "Tradeable" : "Needs rebalance"}
               </span>
             </div>
           </div>
 
+          <div className="scan-priority-strip compact">
+            <span className="level-kicker">Why This Makes The Cut</span>
+            <strong>{selectedPriorityReason}</strong>
+          </div>
+
           <div className="scan-play-grid">
             <article className="scan-mini-card">
-              <span className="level-kicker">Timing</span>
+              <span className="level-kicker">{selectedEvent.primarySymbol} Move Odds</span>
               <strong>
-                {selectedEvent.eventLabel} | {selectedEvent.timeLabel}
+                Up {selectedDirectionalOdds.up.toFixed(0)}% | Flat {selectedDirectionalOdds.flat.toFixed(0)}% | Down {selectedDirectionalOdds.down.toFixed(0)}%
               </strong>
-              <p>{selectedEvent.scope}</p>
+              <p>These refer to {selectedEvent.primarySymbol}, not broad sentiment.</p>
             </article>
             <article className="scan-mini-card">
-              <span className="level-kicker">Up / Flat / Down</span>
-              <strong>
-                {selectedDirectionalOdds.up.toFixed(0)} / {selectedDirectionalOdds.flat.toFixed(0)} / {selectedDirectionalOdds.down.toFixed(0)}
-              </strong>
-              <p>Normalized odds from the current scenario mix.</p>
+              <span className="level-kicker">Starter Basket</span>
+              <strong>{legs.length} legs across {selectedEvent.tickerProfiles.map((profile) => profile.symbol).join(" / ")}</strong>
+              <p>{selectedStructureSummary}</p>
             </article>
             <article className="scan-mini-card">
-              <span className="level-kicker">Best Structure</span>
-              <strong>{selectedStructureSummary}</strong>
-              <p>Uses adjacent tickers tied to the same catalyst chain.</p>
-            </article>
-            <article className="scan-mini-card">
-              <span className="level-kicker">R:R Floor</span>
-              <strong>{fmtMultiple(rewardRiskMultiple)}</strong>
-              <p className={passesGuardrail ? "bull-text" : "bear-text"}>
-                {passesGuardrail ? "At or above the 2.5x floor" : "Below the 2.5x floor"}
-              </p>
-            </article>
-            <article className="scan-mini-card">
-              <span className="level-kicker">Weighted Expectancy</span>
-              <strong>{compactMoney(weightedExpectedPnl)}</strong>
-              <p>Based on the currently edited scenario mix.</p>
+              <span className="level-kicker">Payoff Profile</span>
+              <strong>{fmtMultiple(rewardRiskMultiple)} | {compactMoney(weightedExpectedPnl)}</strong>
+              <p>{passesGuardrail ? "Clears the 2.5x floor on the starter basket." : "Below the 2.5x floor until you rebalance."}</p>
             </article>
             <article className="scan-mini-card">
               <span className="level-kicker">Most Likely Branch</span>
@@ -651,11 +659,9 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
             {legs.slice(0, 4).map((leg) => (
               <article key={`play-${leg.id}`} className="scan-play-leg">
                 <strong>
-                  {leg.symbol} {leg.type.toUpperCase()} {fmtDollar(leg.strike, 2)}
+                  {leg.symbol} {leg.type.toUpperCase()} | {leg.dte}D
                 </strong>
-                <p>
-                  {leg.label} | {leg.contracts}x | {leg.dte} DTE | {fmtDollar(leg.premium * leg.contracts * 100)}
-                </p>
+                <p>{leg.label} | {leg.thesis}</p>
               </article>
             ))}
           </div>
