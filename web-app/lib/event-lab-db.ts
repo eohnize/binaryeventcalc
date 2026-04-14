@@ -7,7 +7,13 @@ type ScanRunRow = {
 };
 
 function getDatabaseUrl() {
-  return process.env.DATABASE_URL?.trim() || "";
+  return (
+    process.env.DATABASE_URL?.trim() ||
+    process.env.POSTGRES_URL?.trim() ||
+    process.env.POSTGRES_PRISMA_URL?.trim() ||
+    process.env.POSTGRES_URL_NON_POOLING?.trim() ||
+    ""
+  );
 }
 
 function getSql() {
@@ -30,6 +36,26 @@ function parseSnapshot(value: WeeklyScanSnapshot | string | null | undefined) {
 
 export function hasEventLabDatabase() {
   return Boolean(getDatabaseUrl());
+}
+
+export function getEventLabRuntimeDiagnostics() {
+  return {
+    hasDatabaseUrl: Boolean(process.env.DATABASE_URL?.trim()),
+    hasPostgresUrl: Boolean(process.env.POSTGRES_URL?.trim()),
+    hasPostgresPrismaUrl: Boolean(process.env.POSTGRES_PRISMA_URL?.trim()),
+    hasPostgresUrlNonPooling: Boolean(process.env.POSTGRES_URL_NON_POOLING?.trim()),
+    hasAdminKey: Boolean(process.env.EVENT_LAB_ADMIN_KEY?.trim()),
+    activeDatabaseSource:
+      process.env.DATABASE_URL?.trim()
+        ? "DATABASE_URL"
+        : process.env.POSTGRES_URL?.trim()
+          ? "POSTGRES_URL"
+          : process.env.POSTGRES_PRISMA_URL?.trim()
+            ? "POSTGRES_PRISMA_URL"
+            : process.env.POSTGRES_URL_NON_POOLING?.trim()
+              ? "POSTGRES_URL_NON_POOLING"
+              : "none",
+  };
 }
 
 export async function loadStoredWeeklyScanSnapshot(weekStartDate: string) {

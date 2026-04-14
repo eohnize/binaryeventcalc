@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
-import { getWeeklyScanSnapshot, hasEventLabDatabase, persistWeeklyScanSnapshot } from "../../../lib/event-lab-db";
+import {
+  getEventLabRuntimeDiagnostics,
+  getWeeklyScanSnapshot,
+  hasEventLabDatabase,
+  persistWeeklyScanSnapshot,
+} from "../../../lib/event-lab-db";
 import { buildWeeklyScanSnapshot } from "../../../lib/weekly-event-lab";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const snapshot = await getWeeklyScanSnapshot();
+  const diagnostics = getEventLabRuntimeDiagnostics();
   return NextResponse.json({
     ...snapshot,
     storage: hasEventLabDatabase() ? "database-or-fallback" : "seeded-only",
+    diagnostics,
   });
 }
 
