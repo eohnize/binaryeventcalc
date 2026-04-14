@@ -303,21 +303,26 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
     value: string,
     symbol?: string,
   ) {
-    setScenarioInputs((current) => ({
-      ...current,
-      [scenarioName]: {
-        probability: current[scenarioName]?.probability ?? "",
-        moves: current[scenarioName]?.moves ?? {},
-        ...(field === "probability"
-          ? { probability: value }
-          : {
-              moves: {
-                ...(current[scenarioName]?.moves ?? {}),
-                [symbol ?? ""]: value,
+    setScenarioInputs((current) => {
+      const existing = current[scenarioName] ?? { probability: "", moves: {} };
+
+      return {
+        ...current,
+        [scenarioName]:
+          field === "probability"
+            ? {
+                probability: value,
+                moves: existing.moves,
+              }
+            : {
+                probability: existing.probability,
+                moves: {
+                  ...existing.moves,
+                  [symbol ?? ""]: value,
+                },
               },
-            }),
-      },
-    }));
+      };
+    });
   }
 
   function resetScenarioInputs() {
