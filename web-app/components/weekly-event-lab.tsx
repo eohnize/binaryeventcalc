@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   buildPortfolioStarterLegs,
+  evaluatePortfolioScenarios,
   estimateOptionPrice,
   type EventCandidate,
   type EventKind,
@@ -99,6 +100,12 @@ type ScenarioRow = {
   result: ScenarioResult;
 };
 
+type DirectionalOdds = {
+  up: number;
+  flat: number;
+  down: number;
+};
+
 function buildTickerInputs(event: EventCandidate): TickerInputState {
   return Object.fromEntries(
     event.tickerProfiles.map((profile) => [
@@ -128,6 +135,42 @@ function buildScenarioInputs(event: EventCandidate): ScenarioInputState {
   );
 }
 
+function bucketDirectionalOdds(event: EventCandidate, scenarios: PortfolioScenario[]): DirectionalOdds {
+  return scenarios.reduce<DirectionalOdds>(
+    (buckets, scenario) => {
+      const referenceMove =
+        scenario.moves[event.primarySymbol] ??
+        Object.values(scenario.moves).reduce((sum, move) => sum + move, 0) / Math.max(Object.keys(scenario.moves).length, 1);
+
+      if (referenceMove >= 1) {
+        buckets.up += scenario.probability;
+      } else if (referenceMove <= -1) {
+        buckets.down += scenario.probability;
+      } else {
+        buckets.flat += scenario.probability;
+      }
+
+      return buckets;
+    },
+    { up: 0, flat: 0, down: 0 },
+  );
+}
+
+function summarizeStructure(legs: PlannerLeg[], maxItems = 4) {
+  const seen = new Set<string>();
+  const summary: string[] = [];
+
+  for (const leg of legs) {
+    const item = `${leg.symbol} ${leg.type.toUpperCase()}`;
+    if (seen.has(item)) continue;
+    seen.add(item);
+    summary.push(item);
+    if (summary.length >= maxItems) break;
+  }
+
+  return summary.join(" + ");
+}
+
 export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const [kindFilter, setKindFilter] = useState<"all" | EventKind>("all");
   const [selectedEventId, setSelectedEventId] = useState(snapshot.events[0]?.id ?? "");
@@ -140,6 +183,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   );
   const [selectedScenarioName, setSelectedScenarioName] = useState(snapshot.events[0]?.portfolioScenarios[0]?.name ?? "");
   const [legs, setLegs] = useState<PlannerLeg[]>([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const filteredEvents = snapshot.events.filter((event) => kindFilter === "all" || event.kind === kindFilter);
   const selectedEvent =
@@ -172,6 +216,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
     setScenarioInputs(buildScenarioInputs(selectedEvent));
     setLegs(buildPortfolioStarterLegs(selectedEvent));
     setSelectedScenarioName(selectedEvent.portfolioScenarios[0]?.name ?? "");
+    setShowAdvanced(false);
   }, [selectedEvent]);
 
   if (!selectedEvent || !selectedProfile) {
@@ -398,6 +443,32 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   ).length;
   const probabilityBalanced = Math.abs(rawProbabilityTotal - 100) <= 1;
   const launchLeg = legs[0];
+  const selectedDirectionalOdds = bucketDirectionalOdds(
+    selectedEvent,
+    scenarioRows.map((row) => row.scenario),
+  );
+  const selectedStructureSummary = summarizeStructure(legs);
+  const boardRows = filteredEvents.map((event) => {
+    const starterLegs = buildPortfolioStarterLegs(event);
+    const evaluated = evaluatePortfolioScenarios(event, starterLegs);
+    const best = evaluated.reduce((currentBest, row) => (row.totalPnl > currentBest.totalPnl ? row : currentBest), evaluated[0]);
+    const worst = evaluated.reduce((currentWorst, row) => (row.totalPnl < currentWorst.totalPnl ? row : currentWorst), evaluated[0]);
+    const rewardRisk =
+      best.totalPnl > 0 && worst.totalPnl < 0 ? best.totalPnl / Math.abs(worst.totalPnl) : 0;
+    const weightedExpectancy = evaluated.reduce(
+      (sum, row) => sum + row.totalPnl * (row.scenario.probability / 100),
+      0,
+    );
+
+    return {
+      event,
+      odds: bucketDirectionalOdds(event, event.portfolioScenarios),
+      rewardRisk,
+      passesGuardrail: rewardRisk >= 2.5,
+      weightedExpectancy,
+      structureSummary: summarizeStructure(starterLegs),
+    };
+  });
   const legacyHref = `/?ticker=${encodeURIComponent(selectedProfile.symbol)}&price=${encodeURIComponent(
     (spotBySymbol[selectedProfile.symbol] ?? selectedProfile.seedSpot).toFixed(2),
   )}${launchLeg ? `&strike=${encodeURIComponent(launchLeg.strike.toFixed(2))}&dte=${encodeURIComponent(String(launchLeg.dte))}` : ""}`;
@@ -476,37 +547,138 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
           </div>
         </div>
 
-        <div className="scan-event-grid">
-          {filteredEvents.map((event, index) => (
+        <div className="scan-board-list">
+          {boardRows.map(({ event, odds, rewardRisk, passesGuardrail, weightedExpectancy, structureSummary }, index) => (
             <button
               key={event.id}
               type="button"
-              className={`scan-event-row ${event.id === selectedEvent.id ? "selected" : ""}`}
+              className={`scan-board-row ${event.id === selectedEvent.id ? "selected" : ""}`}
               onClick={() => loadEvent(event)}
             >
-              <div className="scan-event-row-top">
-                <span className="scan-rank">#{index + 1}</span>
-                <span className="scan-score">{event.ranking.composite}</span>
+              <div className="scan-board-main">
+                <div className="scan-board-title">
+                  <span className="scan-rank">#{index + 1}</span>
+                  <div>
+                    <strong>{event.title}</strong>
+                    <p>
+                      {event.eventLabel} | {event.timeLabel} | {scoreHint(event)}
+                    </p>
+                  </div>
+                </div>
+                <div className="scan-chip-row">
+                  {event.watchlistTickers.slice(0, 4).map((ticker) => (
+                    <span key={ticker} className="scan-chip">
+                      {ticker}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <strong>{event.title}</strong>
-              <p>{event.summary}</p>
-              <div className="scan-meta-line">
-                <span>{event.eventLabel}</span>
-                <span>{event.timeLabel}</span>
-                <span>{scoreHint(event)}</span>
+
+              <div className="scan-board-odds">
+                <span className="scan-chip bull-chip">Up {fmtProbability(Number(odds.up.toFixed(0)))}</span>
+                <span className="scan-chip muted">Flat {fmtProbability(Number(odds.flat.toFixed(0)))}</span>
+                <span className="scan-chip bear-chip">Down {fmtProbability(Number(odds.down.toFixed(0)))}</span>
               </div>
-              <div className="scan-chip-row">
-                {event.watchlistTickers.slice(0, 4).map((ticker) => (
-                  <span key={ticker} className="scan-chip">
-                    {ticker}
-                  </span>
-                ))}
+
+              <div className="scan-board-stats">
+                <span>{structureSummary}</span>
+                <span className={passesGuardrail ? "bull-text" : "bear-text"}>
+                  {passesGuardrail ? `${fmtMultiple(rewardRisk)} R:R` : `${fmtMultiple(rewardRisk)} needs work`}
+                </span>
+                <span className={weightedExpectancy >= 0 ? "bull-text" : "bear-text"}>
+                  {compactMoney(weightedExpectancy)} expectancy
+                </span>
               </div>
             </button>
           ))}
         </div>
 
-        <div className="scan-detail-panel">
+        <section className="scan-play-card">
+          <div className="scan-play-head">
+            <div>
+              <span className="eyebrow">Selected Play</span>
+              <h3>{selectedEvent.title}</h3>
+              <p>{selectedEvent.summary}</p>
+            </div>
+            <div className="scan-chip-row">
+              <span className="scan-chip muted">{selectedEvent.kind}</span>
+              <span className={`scan-chip ${passesGuardrail ? "bull-chip" : "bear-chip"}`}>
+                {passesGuardrail ? "Tradeable" : "Needs rebalance"}
+              </span>
+            </div>
+          </div>
+
+          <div className="scan-play-grid">
+            <article className="scan-mini-card">
+              <span className="level-kicker">Timing</span>
+              <strong>
+                {selectedEvent.eventLabel} | {selectedEvent.timeLabel}
+              </strong>
+              <p>{selectedEvent.scope}</p>
+            </article>
+            <article className="scan-mini-card">
+              <span className="level-kicker">Up / Flat / Down</span>
+              <strong>
+                {selectedDirectionalOdds.up.toFixed(0)} / {selectedDirectionalOdds.flat.toFixed(0)} / {selectedDirectionalOdds.down.toFixed(0)}
+              </strong>
+              <p>Normalized odds from the current scenario mix.</p>
+            </article>
+            <article className="scan-mini-card">
+              <span className="level-kicker">Best Structure</span>
+              <strong>{selectedStructureSummary}</strong>
+              <p>Uses adjacent tickers tied to the same catalyst chain.</p>
+            </article>
+            <article className="scan-mini-card">
+              <span className="level-kicker">R:R Floor</span>
+              <strong>{fmtMultiple(rewardRiskMultiple)}</strong>
+              <p className={passesGuardrail ? "bull-text" : "bear-text"}>
+                {passesGuardrail ? "At or above the 2.5x floor" : "Below the 2.5x floor"}
+              </p>
+            </article>
+            <article className="scan-mini-card">
+              <span className="level-kicker">Weighted Expectancy</span>
+              <strong>{compactMoney(weightedExpectedPnl)}</strong>
+              <p>Based on the currently edited scenario mix.</p>
+            </article>
+            <article className="scan-mini-card">
+              <span className="level-kicker">Most Likely Branch</span>
+              <strong>{favoriteScenarioRow.scenario.name}</strong>
+              <p>{favoriteScenarioRow.normalizedProbability.toFixed(0)}% normalized weight</p>
+            </article>
+          </div>
+
+          <div className="scan-play-legs">
+            {legs.slice(0, 4).map((leg) => (
+              <article key={`play-${leg.id}`} className="scan-play-leg">
+                <strong>
+                  {leg.symbol} {leg.type.toUpperCase()} {fmtDollar(leg.strike, 2)}
+                </strong>
+                <p>
+                  {leg.label} | {leg.contracts}x | {leg.dte} DTE | {fmtDollar(leg.premium * leg.contracts * 100)}
+                </p>
+              </article>
+            ))}
+          </div>
+
+          <div className="scan-chip-row">
+            {selectedEvent.tickerProfiles.map((profile) => (
+              <span key={`related-${profile.symbol}`} className="scan-chip">
+                {profile.symbol}
+              </span>
+            ))}
+          </div>
+
+          <div className="scan-play-actions">
+            <button type="button" className="secondary-btn" onClick={() => setShowAdvanced((current) => !current)}>
+              {showAdvanced ? "Hide Advanced" : "Show Advanced"}
+            </button>
+            <button type="button" className="secondary-btn" onClick={resetStarterLegs}>Reset Legs</button>
+            <a className="primary-btn" href={legacyHref}>Open Legacy Calculator</a>
+          </div>
+        </section>
+
+        {showAdvanced ? (
+          <div className="scan-detail-panel">
             <section className="scan-detail-card">
               <div className="scan-detail-head">
                 <div>
@@ -971,7 +1143,8 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 </div>
               </div>
             </section>
-        </div>
+          </div>
+        ) : null}
       </section>
     </>
   );

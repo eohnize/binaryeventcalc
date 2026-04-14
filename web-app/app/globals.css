@@ -1057,6 +1057,84 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.scan-board-list {
+  display: grid;
+  gap: 10px;
+}
+
+.scan-board-row {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(17, 28, 42, 0.94), rgba(10, 17, 26, 0.96));
+  color: var(--text);
+  text-align: left;
+  display: grid;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.scan-board-row.selected {
+  border-color: rgba(244, 193, 95, 0.32);
+  box-shadow: 0 0 0 1px rgba(244, 193, 95, 0.18);
+}
+
+.scan-board-main,
+.scan-board-title,
+.scan-board-stats,
+.scan-play-head,
+.scan-play-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.scan-board-title strong,
+.scan-play-leg strong {
+  margin: 0;
+}
+
+.scan-board-title p,
+.scan-board-stats,
+.scan-play-head p,
+.scan-play-leg p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.scan-board-odds,
+.scan-play-legs {
+  display: grid;
+  gap: 10px;
+}
+
+.scan-play-card {
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(99, 167, 255, 0.22);
+  background: linear-gradient(180deg, rgba(18, 31, 48, 0.78), rgba(10, 17, 25, 0.96));
+  display: grid;
+  gap: 14px;
+}
+
+.scan-play-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.scan-play-leg {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(8, 14, 22, 0.84);
+  display: grid;
+  gap: 6px;
+}
+
 .scan-review-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1562,6 +1640,7 @@ a {
   .scan-symbol-grid,
   .scan-probability-grid,
   .scan-event-grid,
+  .scan-play-grid,
   .scan-review-grid,
   .scan-builder-grid {
     grid-template-columns: 1fr;
@@ -1580,7 +1659,12 @@ a {
   .scan-planner-toolbar,
   .scan-two-col,
   .scan-context-banner,
-  .scan-symbol-head {
+  .scan-symbol-head,
+  .scan-board-main,
+  .scan-board-title,
+  .scan-board-stats,
+  .scan-play-head,
+  .scan-play-actions {
     flex-direction: column;
     align-items: flex-start;
   }
