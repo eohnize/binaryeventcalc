@@ -301,6 +301,11 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               </span>
             ))}
           </div>
+          <div className="scan-review-actions">
+            <a className="secondary-btn" href="/weekly-scan/review">
+              Open Review Log
+            </a>
+          </div>
           <ul className="scan-note-list">
             {snapshot.notes.map((note) => (
               <li key={note}>{note}</li>

@@ -3,6 +3,7 @@ import {
   buildWeeklyScanSnapshot,
   buildPortfolioStarterLegs,
   evaluatePortfolioScenarios,
+  type ProbabilityOverlay,
   type WeeklyScanSnapshot,
 } from "./weekly-event-lab";
 
@@ -49,6 +50,23 @@ type EventCandidateLookupRow = {
 
 type ExistingOutcomeLookupRow = {
   outcome_id: string;
+};
+
+type OutcomeReviewRow = {
+  outcome_id: string;
+  event_key: string;
+  event_title: string;
+  event_kind: string;
+  event_date: string;
+  event_label: string;
+  week_of_date: string;
+  resolved_at: string | null;
+  realized_bucket: string | null;
+  realized_move_map: Record<string, number> | string | null;
+  realized_summary: string | null;
+  closest_scenario_name: string | null;
+  probability_overlay: ProbabilityOverlay | string | null;
+  created_at: string;
 };
 
 export type PersistOutcomeInput = {
@@ -99,6 +117,20 @@ function parseMoveMap(value: Record<string, number> | string | null | undefined)
       return JSON.parse(value) as Record<string, number>;
     } catch {
       return {};
+    }
+  }
+  return value;
+}
+
+function parseProbabilityOverlay(
+  value: ProbabilityOverlay | string | null | undefined,
+): ProbabilityOverlay | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as ProbabilityOverlay;
+    } catch {
+      return null;
     }
   }
   return value;
@@ -488,6 +520,84 @@ export async function loadRecentEventOutcomes(limit = 10) {
     }));
   } catch (error) {
     console.error("event-lab-db: failed to load recent event outcomes", error);
+    return [];
+  }
+}
+
+export async function loadRecentOutcomeReview(limit = 10) {
+  const sql = getSql();
+  if (!sql) return [];
+
+  try {
+    const rows = (await sql.query(
+      `
+        select
+          eo.id as outcome_id,
+          ec.event_key,
+          ec.title as event_title,
+          ec.kind as event_kind,
+          ec.event_date,
+          ec.event_label,
+          sr.week_of_date,
+          eo.resolved_at,
+          eo.realized_bucket,
+          eo.realized_move_map,
+          eo.realized_summary,
+          eo.closest_scenario_name,
+          ec.probability_overlay,
+          eo.created_at
+        from event_outcomes eo
+        join event_candidates ec on ec.id = eo.event_candidate_id
+        join scan_runs sr on sr.id = ec.scan_run_id
+        order by coalesce(eo.resolved_at, eo.created_at) desc
+        limit $1
+      `,
+      [limit],
+    )) as OutcomeReviewRow[];
+
+    return rows.map((row) => {
+      const overlay = parseProbabilityOverlay(row.probability_overlay);
+      const scenarioWeights = overlay?.scenarioWeights ?? [];
+      const plannerTopScenario =
+        scenarioWeights.length > 0
+          ? [...scenarioWeights].sort(
+              (left, right) => right.blendedProbability - left.blendedProbability,
+            )[0]
+          : null;
+      const realizedScenario =
+        scenarioWeights.find((scenario) => scenario.scenarioName === row.closest_scenario_name) ?? null;
+
+      return {
+        outcomeId: row.outcome_id,
+        eventKey: row.event_key,
+        eventTitle: row.event_title,
+        eventKind: row.event_kind,
+        eventDate: row.event_date,
+        eventLabel: row.event_label,
+        weekStartDate: row.week_of_date,
+        resolvedAt: row.resolved_at,
+        realizedBucket: row.realized_bucket,
+        realizedMoveMap: parseMoveMap(row.realized_move_map),
+        realizedSummary: row.realized_summary,
+        closestScenarioName: row.closest_scenario_name,
+        overlayMode: overlay?.mode ?? "unknown",
+        plannerTopScenarioName: plannerTopScenario?.scenarioName ?? null,
+        plannerTopScenarioProbability: plannerTopScenario?.blendedProbability ?? null,
+        realizedScenarioHistoricalPrior: realizedScenario?.historicalPrior ?? null,
+        realizedScenarioMarketImplied: realizedScenario?.marketImplied ?? null,
+        realizedScenarioBlendedProbability: realizedScenario?.blendedProbability ?? null,
+        matchedPlannerFavorite:
+          Boolean(row.closest_scenario_name) &&
+          row.closest_scenario_name === (plannerTopScenario?.scenarioName ?? null),
+        probabilityGapToFavorite:
+          realizedScenario && plannerTopScenario
+            ? realizedScenario.blendedProbability - plannerTopScenario.blendedProbability
+            : null,
+        createdAt: row.created_at,
+      };
+    });
+  } catch (error) {
+    console.error("event-lab-db: failed to load recent outcome review", error);
     return [];
   }
 }

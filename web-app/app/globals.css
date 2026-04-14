@@ -924,6 +924,12 @@ a {
   margin-top: 6px;
 }
 
+.scan-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .scan-summary-grid,
 .scan-kpi-grid,
 .scan-mini-grid,
@@ -1049,6 +1055,39 @@ a {
 
 .scan-event-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.scan-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.scan-review-card {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(17, 28, 42, 0.94), rgba(10, 17, 26, 0.96));
+  display: grid;
+  gap: 12px;
+}
+
+.scan-review-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.scan-review-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.scan-review-card strong {
+  display: block;
+  margin-bottom: 4px;
 }
 
 .scan-event-row {
@@ -1453,7 +1492,8 @@ a {
   .scan-watchlist-grid,
   .scan-symbol-grid,
   .scan-probability-grid,
-  .scan-event-grid {
+  .scan-event-grid,
+  .scan-review-grid {
     grid-template-columns: 1fr;
   }
 

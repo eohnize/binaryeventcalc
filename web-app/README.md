@@ -72,6 +72,8 @@ x-event-lab-key: <EVENT_LAB_ADMIN_KEY>
 
 Additional research endpoints:
 
+- `GET /weekly-scan/review`
+  - browser-friendly review page for recent scan runs and realized outcomes
 - `GET /weekly-scan/history`
   - returns recent scan runs plus recent logged outcomes
 - `GET /weekly-scan/outcomes`
