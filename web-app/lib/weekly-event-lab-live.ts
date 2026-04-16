@@ -169,6 +169,18 @@ function formatDayLabel(dateValue: string) {
   );
 }
 
+function parseEventDate(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = new Date(value.includes("T") ? value : `${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function distanceFromDate(value: string | null | undefined, anchor: Date) {
+  const parsed = parseEventDate(value);
+  if (!parsed) return Number.POSITIVE_INFINITY;
+  return Math.abs(parsed.getTime() - anchor.getTime());
+}
+
 function normalizeProbabilities(values: number[]) {
   const total = values.reduce((sum, value) => sum + value, 0);
   if (total <= 0) return values.map(() => 0);
@@ -393,6 +405,21 @@ function chooseMacroEvent(entries: FmpEconomicCalendarEntry[]) {
     })[0];
 }
 
+function chooseNearestMacroEvent(entries: FmpEconomicCalendarEntry[], anchor: Date) {
+  return entries
+    .map((entry) => {
+      const config = MACRO_CONFIGS.find((item) => item.matcher.test(entry.event ?? ""));
+      return config ? { entry, config } : null;
+    })
+    .filter((entry): entry is { entry: FmpEconomicCalendarEntry; config: MacroConfig } => Boolean(entry))
+    .sort((left, right) => {
+      const distanceDiff = distanceFromDate(left.entry.date, anchor) - distanceFromDate(right.entry.date, anchor);
+      if (distanceDiff !== 0) return distanceDiff;
+      if (right.config.priority !== left.config.priority) return right.config.priority - left.config.priority;
+      return String(left.entry.date ?? "").localeCompare(String(right.entry.date ?? ""));
+    })[0];
+}
+
 function classifyMacroScenario(entry: FmpEconomicCalendarEntry, config: MacroConfig) {
   const actual = toNumber(entry.actual);
   const expected = toNumber(entry.consensus) ?? toNumber(entry.previous);
@@ -608,7 +635,17 @@ async function buildLiveMacroEvent(baseEvent: EventCandidate, weekStartDate: str
   const weekStart = new Date(`${weekStartDate}T00:00:00.000Z`);
   const weekEnd = addDays(weekStart, 4);
   const currentWeek = await fetchFmpEconomicCalendar(isoDate(weekStart), isoDate(weekEnd));
-  const selected = chooseMacroEvent(currentWeek.filter((entry) => isUnitedStatesEvent(entry.country)));
+  const currentWeekUs = currentWeek.filter((entry) => isUnitedStatesEvent(entry.country));
+  let selected = chooseMacroEvent(currentWeekUs);
+  let usedNearbyFallback = false;
+
+  if (!selected) {
+    const nearbyWindow = await fetchFmpEconomicCalendar(isoDate(addDays(weekStart, -7)), isoDate(addDays(weekEnd, 7)));
+    const nearbyUs = nearbyWindow.filter((entry) => isUnitedStatesEvent(entry.country));
+    selected = chooseNearestMacroEvent(nearbyUs, weekStart);
+    usedNearbyFallback = Boolean(selected);
+  }
+
   if (!selected) return null;
 
   const historicalWindowStart = addDays(weekStart, -730);
@@ -685,8 +722,12 @@ async function buildLiveMacroEvent(baseEvent: EventCandidate, weekStartDate: str
     dataOrigin: "live",
     dataOriginNote:
       sources.length > 0
-        ? `Live ${selected.config.catalystName} calendar, real historical priors, and live prediction-market bias are active.`
-        : `Live ${selected.config.catalystName} calendar and real historical priors are active. Prediction-market bias is still not configured for this event.`,
+        ? usedNearbyFallback
+          ? `Nearest live ${selected.config.catalystName} release was used as a nearby fallback, with real historical priors and live prediction-market bias active.`
+          : `Live ${selected.config.catalystName} calendar, real historical priors, and live prediction-market bias are active.`
+        : usedNearbyFallback
+          ? `Nearest live ${selected.config.catalystName} release was used as a nearby fallback, with real historical priors active. Prediction-market bias is still not configured for this event.`
+          : `Live ${selected.config.catalystName} calendar and real historical priors are active. Prediction-market bias is still not configured for this event.`,
     catalystName: selected.config.catalystName,
     eventDate: selected.entry.date?.slice(0, 10) ?? baseEvent.eventDate,
     eventLabel: selected.entry.date?.slice(0, 10)
@@ -715,49 +756,66 @@ async function buildLiveMacroEvent(baseEvent: EventCandidate, weekStartDate: str
 async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: string): Promise<EventCandidate | null> {
   const weekStart = new Date(`${weekStartDate}T00:00:00.000Z`);
   const weekEnd = addDays(weekStart, 4);
-  const upcoming = await fetchFmpEarningsCalendar(isoDate(weekStart), isoDate(weekEnd));
-  const uniqueSymbols = [
-    ...new Set(upcoming.map((entry) => entry.symbol?.trim().toUpperCase()).filter(Boolean)),
-  ] as string[];
+  let upcoming = await fetchFmpEarningsCalendar(isoDate(weekStart), isoDate(weekEnd));
+  let usedNearbyFallback = false;
 
-  const profiles = new Map<string, FmpProfileEntry | null>();
-  await Promise.all(
-    uniqueSymbols.map(async (symbol) => {
-      try {
-        profiles.set(symbol, await fetchFmpProfile(symbol));
-      } catch (error) {
-        console.error(`weekly-event-lab-live: failed to fetch profile for ${symbol}`, error);
-        profiles.set(symbol, null);
-      }
-    }),
-  );
+  if (upcoming.length === 0) {
+    upcoming = await fetchFmpEarningsCalendar(isoDate(addDays(weekStart, -7)), isoDate(addDays(weekEnd, 7)));
+    usedNearbyFallback = upcoming.length > 0;
+  }
 
-  const candidate = upcoming
-    .map((entry) => {
-      const symbol = entry.symbol?.trim().toUpperCase();
-      if (!symbol) return null;
-      const profile = profiles.get(symbol) ?? null;
-      const marketCap = toNumber(profile?.mktCap) ?? toNumber(profile?.marketCap) ?? 0;
-      const avgVolume = toNumber(profile?.volAvg) ?? toNumber(profile?.avgVolume) ?? 0;
+  const uniqueSymbols = [...new Set(upcoming.map((entry) => entry.symbol?.trim().toUpperCase()).filter(Boolean))] as string[];
+  const profileCache = new Map<string, FmpProfileEntry | null>();
 
-      return { entry, symbol, profile, marketCap, avgVolume };
-    })
-    .filter(
-      (
-        item,
-      ): item is {
-        entry: FmpEarningsCalendarEntry;
-        symbol: string;
-        profile: FmpProfileEntry | null;
-        marketCap: number;
-        avgVolume: number;
-      } => Boolean(item),
-    )
-    .sort((left, right) => {
-      if (right.marketCap !== left.marketCap) return right.marketCap - left.marketCap;
-      if (right.avgVolume !== left.avgVolume) return right.avgVolume - left.avgVolume;
-      return left.symbol.localeCompare(right.symbol);
-    })[0];
+  async function getProfile(symbol: string) {
+    if (profileCache.has(symbol)) return profileCache.get(symbol) ?? null;
+    try {
+      const profile = await fetchFmpProfile(symbol);
+      profileCache.set(symbol, profile);
+      return profile;
+    } catch (error) {
+      console.error(`weekly-event-lab-live: failed to fetch profile for ${symbol}`, error);
+      profileCache.set(symbol, null);
+      return null;
+    }
+  }
+
+  const candidatePool = uniqueSymbols.slice(0, Math.min(uniqueSymbols.length, 12));
+  const candidateRows: Array<{
+    entry: FmpEarningsCalendarEntry;
+    symbol: string;
+    profile: FmpProfileEntry | null;
+    marketCap: number;
+    avgVolume: number;
+  }> = [];
+
+  for (const symbol of candidatePool) {
+    const entry = upcoming.find((item) => item.symbol?.trim().toUpperCase() === symbol);
+    if (!entry) continue;
+    const profile = await getProfile(symbol);
+    const marketCap = toNumber(profile?.mktCap) ?? toNumber(profile?.marketCap) ?? 0;
+    const avgVolume = toNumber(profile?.volAvg) ?? toNumber(profile?.avgVolume) ?? 0;
+    candidateRows.push({ entry, symbol, profile, marketCap, avgVolume });
+  }
+
+  const candidate =
+    candidateRows
+      .sort((left, right) => {
+        if (right.marketCap !== left.marketCap) return right.marketCap - left.marketCap;
+        if (right.avgVolume !== left.avgVolume) return right.avgVolume - left.avgVolume;
+        return left.symbol.localeCompare(right.symbol);
+      })[0] ??
+    (() => {
+      const fallbackEntry = upcoming.find((entry) => entry.symbol?.trim());
+      if (!fallbackEntry?.symbol) return null;
+      return {
+        entry: fallbackEntry,
+        symbol: fallbackEntry.symbol.trim().toUpperCase(),
+        profile: null,
+        marketCap: 0,
+        avgVolume: 0,
+      };
+    })();
 
   if (!candidate) return null;
 
@@ -846,7 +904,9 @@ async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: 
   return {
     ...baseEvent,
     dataOrigin: "live",
-    dataOriginNote: `Live earnings calendar and real ${candidate.symbol} earnings history are active. Prediction-market bias is still historical-only for earnings.`,
+    dataOriginNote: usedNearbyFallback
+      ? `Nearest live earnings candidate and real ${candidate.symbol} earnings history are active. This row used a nearby fallback because the exact week returned no usable earnings event.`
+      : `Live earnings calendar and real ${candidate.symbol} earnings history are active. Prediction-market bias is still historical-only for earnings.`,
     id: `earnings-${candidate.symbol.toLowerCase()}`,
     title: `${candidate.symbol} Earnings Setup`,
     catalystName: `${candidate.symbol} Earnings`,
@@ -855,7 +915,9 @@ async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: 
       ? formatDayLabel(candidate.entry.date.slice(0, 10))
       : baseEvent.eventLabel,
     timeLabel: mapTimeLabel(candidate.entry.time, "After close"),
-    summary: `${candidate.profile?.companyName ?? candidate.symbol} is the strongest live earnings candidate found on the board this week, so the play now reflects the incumbent and its adjacent tickers.`,
+    summary: usedNearbyFallback
+      ? `${candidate.profile?.companyName ?? candidate.symbol} is the nearest live earnings candidate available, so the play now reflects a real incumbent and its adjacent tickers.`
+      : `${candidate.profile?.companyName ?? candidate.symbol} is the strongest live earnings candidate found on the board this week, so the play now reflects the incumbent and its adjacent tickers.`,
     whyItMatters: playbook.whyItMatters,
     scope: playbook.scope,
     marketProxy: normalizedPlaybook.marketProxy,
@@ -903,14 +965,26 @@ export async function buildResolvedWeeklyScanSnapshot(now = new Date()): Promise
   }
 
   try {
-    const liveMacro = await buildLiveMacroEvent(
-      seededSnapshot.events.find((event) => event.id === "inflation-reset") ?? seededSnapshot.events[0],
-      weekStartDate,
-    );
-    const liveEarnings = await buildLiveEarningsEvent(
-      seededSnapshot.events.find((event) => event.id === "ai-read-through") ?? seededSnapshot.events[1],
-      weekStartDate,
-    );
+    let liveMacro: EventCandidate | null = null;
+    let liveEarnings: EventCandidate | null = null;
+
+    try {
+      liveMacro = await buildLiveMacroEvent(
+        seededSnapshot.events.find((event) => event.id === "inflation-reset") ?? seededSnapshot.events[0],
+        weekStartDate,
+      );
+    } catch (error) {
+      console.error("weekly-event-lab-live: failed to build live macro event", error);
+    }
+
+    try {
+      liveEarnings = await buildLiveEarningsEvent(
+        seededSnapshot.events.find((event) => event.id === "ai-read-through") ?? seededSnapshot.events[1],
+        weekStartDate,
+      );
+    } catch (error) {
+      console.error("weekly-event-lab-live: failed to build live earnings event", error);
+    }
 
     const mergedEvents: EventCandidate[] = seededSnapshot.events
       .map((event): EventCandidate => {
