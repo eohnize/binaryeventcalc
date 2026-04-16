@@ -504,6 +504,8 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const selectedPriorityReason =
     boardRows.find((row) => row.event.id === selectedEvent.id)?.priorityReason ??
     priorityReason(selectedEvent, rewardRiskMultiple);
+  const liveEventIds = new Set(snapshot.dataSources.liveEventIds);
+  const selectedEventIsLive = liveEventIds.has(selectedEvent.id);
   const advancedTabs = [
     {
       key: "summary" as const,
@@ -548,6 +550,17 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 {theme}
               </span>
             ))}
+          </div>
+          <div className="scan-chip-row">
+            <span className={`scan-chip ${snapshot.dataSources.calendars === "live" ? "bull-chip" : "muted"}`}>
+              Calendars {snapshot.dataSources.calendars === "live" ? "Live" : "Seeded"}
+            </span>
+            <span className={`scan-chip ${snapshot.dataSources.historical === "live" ? "bull-chip" : "muted"}`}>
+              History {snapshot.dataSources.historical === "live" ? "Real" : "Seeded"}
+            </span>
+            <span className={`scan-chip ${snapshot.dataSources.predictionMarkets === "live" ? "bull-chip" : "muted"}`}>
+              Markets {snapshot.dataSources.predictionMarkets === "live" ? "Live" : "Seeded"}
+            </span>
           </div>
           {topBoardRow ? (
             <div className="scan-priority-strip">
@@ -609,6 +622,9 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   </div>
                 </div>
                 <div className="scan-chip-row">
+                  <span className={`scan-chip ${liveEventIds.has(event.id) ? "bull-chip" : "muted"}`}>
+                    {liveEventIds.has(event.id) ? "Live Event" : "Seeded Event"}
+                  </span>
                   {event.watchlistTickers.slice(0, 4).map((ticker) => (
                     <span key={ticker} className="scan-chip">
                       {ticker}
@@ -650,8 +666,20 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               <p className="scan-inline-note">
                 {selectedEvent.eventLabel} | {selectedEvent.timeLabel} | {selectedEvent.kind} | Primary ticker {selectedEvent.primarySymbol}
               </p>
+              {!selectedEventIsLive ? (
+                <p className="scan-inline-note">
+                  This card is still on seeded fallback inputs. Add `FMP_API_KEY` in Vercel to pull the real weekly macro and
+                  earnings calendar into the board.
+                </p>
+              ) : null}
             </div>
             <div className="scan-chip-row">
+              <span className={`scan-chip ${selectedEventIsLive ? "bull-chip" : "muted"}`}>
+                {selectedEventIsLive ? "Live Event" : "Seeded Event"}
+              </span>
+              <span className={`scan-chip ${selectedEvent.probabilityOverlay.sources.length > 0 ? "bull-chip" : "muted"}`}>
+                {selectedEvent.probabilityOverlay.sources.length > 0 ? "Live Market Bias" : "No Live Market Bias"}
+              </span>
               <span className={`scan-chip ${passesGuardrail ? "bull-chip" : "bear-chip"}`}>
                 {passesGuardrail ? "Tradeable" : "Needs rebalance"}
               </span>

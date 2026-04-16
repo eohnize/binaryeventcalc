@@ -1,11 +1,11 @@
 import { neon } from "@neondatabase/serverless";
 import {
-  buildWeeklyScanSnapshot,
   buildPortfolioStarterLegs,
   evaluatePortfolioScenarios,
   type ProbabilityOverlay,
   type WeeklyScanSnapshot,
 } from "./weekly-event-lab";
+import { buildResolvedWeeklyScanSnapshot } from "./weekly-event-lab-live";
 
 type ScanRunRow = {
   id: string;
@@ -102,12 +102,29 @@ function parseSnapshot(value: WeeklyScanSnapshot | string | null | undefined) {
   if (!value) return null;
   if (typeof value === "string") {
     try {
-      return JSON.parse(value) as WeeklyScanSnapshot;
+      const parsed = JSON.parse(value) as WeeklyScanSnapshot;
+      return {
+        ...parsed,
+        dataSources: parsed.dataSources ?? {
+          calendars: "seeded",
+          historical: "seeded",
+          predictionMarkets: "seeded",
+          liveEventIds: [],
+        },
+      };
     } catch {
       return null;
     }
   }
-  return value;
+  return {
+    ...value,
+    dataSources: value.dataSources ?? {
+      calendars: "seeded",
+      historical: "seeded",
+      predictionMarkets: "seeded",
+      liveEventIds: [],
+    },
+  };
 }
 
 function parseMoveMap(value: Record<string, number> | string | null | undefined) {
@@ -147,6 +164,7 @@ export function getEventLabRuntimeDiagnostics() {
     hasPostgresPrismaUrl: Boolean(process.env.POSTGRES_PRISMA_URL?.trim()),
     hasPostgresUrlNonPooling: Boolean(process.env.POSTGRES_URL_NON_POOLING?.trim()),
     hasAdminKey: Boolean(process.env.EVENT_LAB_ADMIN_KEY?.trim()),
+    hasFmpKey: Boolean(process.env.FMP_API_KEY?.trim()),
     activeDatabaseSource:
       process.env.DATABASE_URL?.trim()
         ? "DATABASE_URL"
@@ -185,9 +203,12 @@ export async function loadStoredWeeklyScanSnapshot(weekStartDate: string) {
 }
 
 export async function getWeeklyScanSnapshot(now = new Date()) {
-  const seededSnapshot = buildWeeklyScanSnapshot(now);
-  const storedSnapshot = await loadStoredWeeklyScanSnapshot(seededSnapshot.weekStartDate);
-  return storedSnapshot ?? seededSnapshot;
+  const sourceSnapshot = await buildResolvedWeeklyScanSnapshot(now);
+  const storedSnapshot = await loadStoredWeeklyScanSnapshot(sourceSnapshot.weekStartDate);
+  if (process.env.FMP_API_KEY?.trim()) {
+    return sourceSnapshot;
+  }
+  return storedSnapshot ?? sourceSnapshot;
 }
 
 function normalizeCount(value: number | string | null | undefined) {
@@ -730,7 +751,7 @@ export async function persistEventOutcome(input: PersistOutcomeInput) {
 
 export async function persistWeeklyScanSnapshot(
   snapshot: WeeklyScanSnapshot,
-  sourceMode: "seeded" | "database" | "manual" = "manual",
+  sourceMode: "seeded" | "database" | "manual" | "live" = "manual",
 ) {
   const sql = getSql();
   if (!sql) {

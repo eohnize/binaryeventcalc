@@ -89,6 +89,7 @@ export type TickerProfile = {
 export type EventCandidate = {
   id: string;
   title: string;
+  catalystName?: string;
   kind: EventKind;
   scope: string;
   eventDate: string;
@@ -126,6 +127,12 @@ export type WeeklyScanSnapshot = {
   weekLabel: string;
   weekRangeLabel: string;
   weekStartDate: string;
+  dataSources: {
+    calendars: "seeded" | "live";
+    historical: "seeded" | "live";
+    predictionMarkets: "seeded" | "live";
+    liveEventIds: string[];
+  };
   notes: string[];
   topThemes: string[];
   watchlist: WatchlistGroup[];
@@ -794,13 +801,19 @@ export function buildWeeklyScanSnapshot(now = new Date()): WeeklyScanSnapshot {
     weekLabel: `Week Of ${formatDay(weekStart)}`,
     weekRangeLabel: `${formatDay(weekStart)} - ${formatDay(weekEnd)}`,
     weekStartDate: isoDate(weekStart),
+    dataSources: {
+      calendars: "seeded",
+      historical: "seeded",
+      predictionMarkets: "seeded",
+      liveEventIds: [],
+    },
     notes: [
       "Seeded first iteration means the scenario weights, implied move inputs, and starter premiums are curated defaults, not live vendor data yet.",
       "Prediction-market inputs are now blended into the weekly scan when a clean contract exists, but they are still seeded placeholders until we connect real APIs.",
       "Replace spot, implied move, and premiums with live numbers before trading. The current strike ladders reset off the spot you enter.",
       "The ranking is there to narrow attention on Monday, not to auto-trade the setup.",
-      "Binary outcomes are not stored yet. To make the planner learn over time on Vercel, the next step is persisting outcome rows and pre-event option snapshots in a database.",
-      "Legacy calculator flow stays untouched. This page is a separate planner we can later connect to cron jobs and live vendor data.",
+      "Weekly scan saves and realized outcomes now persist in Postgres so the planner can be reviewed against what actually resolved.",
+      "Legacy calculator flow stays untouched. This page is a separate planner that can keep evolving without breaking the desktop calculator.",
     ],
     topThemes: ["macro", "laggard", "oil", "semis"],
     watchlist: WATCHLIST,
