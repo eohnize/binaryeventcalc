@@ -604,7 +604,7 @@ function isUnitedStatesEvent(country: string | null | undefined) {
   return normalized === "us" || normalized === "usa" || normalized.includes("united states");
 }
 
-async function buildLiveMacroEvent(baseEvent: EventCandidate, weekStartDate: string) {
+async function buildLiveMacroEvent(baseEvent: EventCandidate, weekStartDate: string): Promise<EventCandidate | null> {
   const weekStart = new Date(`${weekStartDate}T00:00:00.000Z`);
   const weekEnd = addDays(weekStart, 4);
   const currentWeek = await fetchFmpEconomicCalendar(isoDate(weekStart), isoDate(weekEnd));
@@ -709,10 +709,10 @@ async function buildLiveMacroEvent(baseEvent: EventCandidate, weekStartDate: str
       ...rankingBase,
       composite: compositeScore(rankingBase, baseEvent.watchlistTickers.length, baseEvent.kind),
     },
-  };
+  } satisfies EventCandidate;
 }
 
-async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: string) {
+async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: string): Promise<EventCandidate | null> {
   const weekStart = new Date(`${weekStartDate}T00:00:00.000Z`);
   const weekEnd = addDays(weekStart, 4);
   const upcoming = await fetchFmpEarningsCalendar(isoDate(weekStart), isoDate(weekEnd));
@@ -870,7 +870,7 @@ async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: 
       ...rankingBase,
       composite: compositeScore(rankingBase, 3, "earnings"),
     },
-  };
+  } satisfies EventCandidate;
 }
 
 function mergeLiveNotes(
@@ -910,8 +910,8 @@ export async function buildResolvedWeeklyScanSnapshot(now = new Date()): Promise
       weekStartDate,
     );
 
-    const mergedEvents = seededSnapshot.events
-      .map((event) => {
+    const mergedEvents: EventCandidate[] = seededSnapshot.events
+      .map((event): EventCandidate => {
         if (event.id === "inflation-reset" && liveMacro) return liveMacro;
         if (event.id === "ai-read-through" && liveEarnings) return liveEarnings;
 
