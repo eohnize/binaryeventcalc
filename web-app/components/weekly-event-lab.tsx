@@ -972,36 +972,6 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 </>
               ) : null}
 
-              {advancedSection === "summary" ? (
-              <div className="scan-method-grid">
-                <article className="scan-method-card">
-                  <span className="level-kicker">Outcome Memory</span>
-                  <strong>Review loop live</strong>
-                  <p>Weekly scans and realized outcomes now persist to Postgres, and the review log lets us compare the planner&apos;s favorite branch with what actually resolved.</p>
-                </article>
-                <article className="scan-method-card">
-                  <span className="level-kicker">Prediction Market Blend</span>
-                  <strong>{selectedEvent.probabilityOverlay.mode === "hybrid" ? "Bias overlay active" : "No direct contract yet"}</strong>
-                  <p>{selectedEvent.probabilityOverlay.mode === "hybrid" ? "Live market odds help tilt the scenario weights, but they do not replace move mapping or option-chain quality checks." : "This board keeps the historical prior fully in control until we have a cleaner external probability source."}</p>
-                </article>
-                <article className="scan-method-card">
-                  <span className="level-kicker">Seeded Inputs</span>
-                  <strong>Manual Starting Point</strong>
-                  <p>Spot, implied move, and premiums are starter values. Replace them with live chain data before using the planner for sizing.</p>
-                </article>
-                <article className="scan-method-card">
-                  <span className="level-kicker">Strike Logic</span>
-                  <strong>Percent Off Spot</strong>
-                  <p>Reset Starter Legs rebuilds strikes off the spot you enter using each leg&apos;s seeded distance band, then rounds to listed strike increments.</p>
-                </article>
-                <article className="scan-method-card">
-                  <span className="level-kicker">Scenario Realism</span>
-                  <strong>{fmtMultiple(selectedScenarioStress)} max implied stretch</strong>
-                  <p>Anything much above roughly 2.0x the seeded implied move should be treated as a stress case, not a base expectation.</p>
-                </article>
-              </div>
-              ) : null}
-
               {advancedSection === "odds" ? (
               <div className="scan-builder-panel">
                 <div className="scan-detail-head compact">
