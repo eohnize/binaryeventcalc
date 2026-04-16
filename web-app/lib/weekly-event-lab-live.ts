@@ -740,8 +740,6 @@ async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: 
       const marketCap = toNumber(profile?.mktCap) ?? toNumber(profile?.marketCap) ?? 0;
       const avgVolume = toNumber(profile?.volAvg) ?? toNumber(profile?.avgVolume) ?? 0;
 
-      if (marketCap < 200_000_000_000 || avgVolume < 1_000_000) return null;
-
       return { entry, symbol, profile, marketCap, avgVolume };
     })
     .filter(
@@ -755,7 +753,11 @@ async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: 
         avgVolume: number;
       } => Boolean(item),
     )
-    .sort((left, right) => right.marketCap - left.marketCap)[0];
+    .sort((left, right) => {
+      if (right.marketCap !== left.marketCap) return right.marketCap - left.marketCap;
+      if (right.avgVolume !== left.avgVolume) return right.avgVolume - left.avgVolume;
+      return left.symbol.localeCompare(right.symbol);
+    })[0];
 
   if (!candidate) return null;
 
@@ -853,7 +855,7 @@ async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: 
       ? formatDayLabel(candidate.entry.date.slice(0, 10))
       : baseEvent.eventLabel,
     timeLabel: mapTimeLabel(candidate.entry.time, "After close"),
-    summary: `${candidate.profile?.companyName ?? candidate.symbol} is the largest liquid earnings catalyst on the board this week, so the play now reflects the incumbent and its adjacent tickers.`,
+    summary: `${candidate.profile?.companyName ?? candidate.symbol} is the strongest live earnings candidate found on the board this week, so the play now reflects the incumbent and its adjacent tickers.`,
     whyItMatters: playbook.whyItMatters,
     scope: playbook.scope,
     marketProxy: normalizedPlaybook.marketProxy,
@@ -928,7 +930,7 @@ export async function buildResolvedWeeklyScanSnapshot(now = new Date()): Promise
             ...event,
             dataOrigin: "seeded" as const,
             dataOriginNote:
-              "No earnings name this week cleared the >$200B market cap and >1M average volume filter, so this row stayed on fallback assumptions.",
+              "No usable earnings candidate was returned from the live weekly calendar, so this row stayed on fallback assumptions.",
           } satisfies EventCandidate;
         }
 
