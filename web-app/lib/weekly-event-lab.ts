@@ -90,6 +90,8 @@ export type EventCandidate = {
   id: string;
   title: string;
   catalystName?: string;
+  dataOrigin?: "seeded" | "live";
+  dataOriginNote?: string;
   kind: EventKind;
   scope: string;
   eventDate: string;
@@ -780,11 +782,25 @@ const EVENT_TEMPLATES: EventTemplate[] = [
 export function buildWeeklyScanSnapshot(now = new Date()): WeeklyScanSnapshot {
   const weekStart = getScanWeekStart(now);
   const weekEnd = addDays(weekStart, 4);
+  const defaultSeedReason = (eventId: string) => {
+    if (eventId === "inflation-reset") {
+      return "Seeded fallback until a live CPI or PPI event is matched for the week.";
+    }
+    if (eventId === "ai-read-through") {
+      return "Seeded fallback until a qualifying earnings event above the size and liquidity threshold is matched for the week.";
+    }
+    if (eventId === "energy-shock-board") {
+      return "Seeded for now because the oil and geopolitical board still needs a live event feed.";
+    }
+    return "Seeded fallback while live event sourcing is still unavailable for this setup.";
+  };
   const events = EVENT_TEMPLATES.map((template) => {
     const eventDate = addDays(weekStart, template.dayOffset);
     const probabilityOverlay = buildProbabilityOverlay(template.probabilityOverlay);
     return {
       ...template,
+      dataOrigin: "seeded" as const,
+      dataOriginNote: defaultSeedReason(template.id),
       eventDate: isoDate(eventDate),
       eventLabel: formatDay(eventDate),
       probabilityOverlay,

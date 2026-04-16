@@ -682,6 +682,11 @@ async function buildLiveMacroEvent(baseEvent: EventCandidate, weekStartDate: str
 
   return {
     ...baseEvent,
+    dataOrigin: "live",
+    dataOriginNote:
+      sources.length > 0
+        ? `Live ${selected.config.catalystName} calendar, real historical priors, and live prediction-market bias are active.`
+        : `Live ${selected.config.catalystName} calendar and real historical priors are active. Prediction-market bias is still not configured for this event.`,
     catalystName: selected.config.catalystName,
     eventDate: selected.entry.date?.slice(0, 10) ?? baseEvent.eventDate,
     eventLabel: selected.entry.date?.slice(0, 10)
@@ -838,6 +843,8 @@ async function buildLiveEarningsEvent(baseEvent: EventCandidate, weekStartDate: 
 
   return {
     ...baseEvent,
+    dataOrigin: "live",
+    dataOriginNote: `Live earnings calendar and real ${candidate.symbol} earnings history are active. Prediction-market bias is still historical-only for earnings.`,
     id: `earnings-${candidate.symbol.toLowerCase()}`,
     title: `${candidate.symbol} Earnings Setup`,
     catalystName: `${candidate.symbol} Earnings`,
@@ -907,7 +914,29 @@ export async function buildResolvedWeeklyScanSnapshot(now = new Date()): Promise
       .map((event) => {
         if (event.id === "inflation-reset" && liveMacro) return liveMacro;
         if (event.id === "ai-read-through" && liveEarnings) return liveEarnings;
-        return event;
+
+        if (event.id === "inflation-reset") {
+          return {
+            ...event,
+            dataOrigin: "seeded" as const,
+            dataOriginNote: "No CPI or PPI release was matched from the live weekly economic calendar, so this row stayed on fallback assumptions.",
+          };
+        }
+
+        if (event.id === "ai-read-through") {
+          return {
+            ...event,
+            dataOrigin: "seeded" as const,
+            dataOriginNote:
+              "No earnings name this week cleared the >$200B market cap and >1M average volume filter, so this row stayed on fallback assumptions.",
+          };
+        }
+
+        return {
+          ...event,
+          dataOrigin: "seeded" as const,
+          dataOriginNote: "This catalyst family is still running on the seeded board because a live event feed has not been connected yet.",
+        };
       })
       .sort((left, right) => right.ranking.composite - left.ranking.composite);
 

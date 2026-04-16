@@ -505,7 +505,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
     boardRows.find((row) => row.event.id === selectedEvent.id)?.priorityReason ??
     priorityReason(selectedEvent, rewardRiskMultiple);
   const liveEventIds = new Set(snapshot.dataSources.liveEventIds);
-  const selectedEventIsLive = liveEventIds.has(selectedEvent.id);
+  const selectedEventIsLive = (selectedEvent.dataOrigin ?? (liveEventIds.has(selectedEvent.id) ? "live" : "seeded")) === "live";
   const advancedTabs = [
     {
       key: "summary" as const,
@@ -622,8 +622,16 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   </div>
                 </div>
                 <div className="scan-chip-row">
-                  <span className={`scan-chip ${liveEventIds.has(event.id) ? "bull-chip" : "muted"}`}>
-                    {liveEventIds.has(event.id) ? "Live Event" : "Seeded Event"}
+                  <span
+                    className={`scan-chip ${
+                      (event.dataOrigin ?? (liveEventIds.has(event.id) ? "live" : "seeded")) === "live"
+                        ? "bull-chip"
+                        : "muted"
+                    }`}
+                  >
+                    {(event.dataOrigin ?? (liveEventIds.has(event.id) ? "live" : "seeded")) === "live"
+                      ? "Live Event"
+                      : "Seeded Event"}
                   </span>
                   {event.watchlistTickers.slice(0, 4).map((ticker) => (
                     <span key={ticker} className="scan-chip">
@@ -668,8 +676,8 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
               </p>
               {!selectedEventIsLive ? (
                 <p className="scan-inline-note">
-                  This card is still on seeded fallback inputs. Add `FMP_API_KEY` in Vercel to pull the real weekly macro and
-                  earnings calendar into the board.
+                  {selectedEvent.dataOriginNote ??
+                    "This card is still on seeded fallback inputs. Add `FMP_API_KEY` in Vercel to pull the real weekly macro and earnings calendar into the board."}
                 </p>
               ) : null}
             </div>
