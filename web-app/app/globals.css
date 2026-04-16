@@ -1334,6 +1334,71 @@ a {
   gap: 14px;
 }
 
+.scan-advanced-shell {
+  gap: 14px;
+}
+
+.scan-advanced-nav-card {
+  gap: 16px;
+}
+
+.scan-advanced-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(8, 14, 22, 0.82);
+}
+
+.scan-advanced-meta strong {
+  font-size: 1rem;
+}
+
+.scan-advanced-meta span {
+  color: var(--muted);
+  line-height: 1.4;
+  font-size: 0.88rem;
+}
+
+.scan-advanced-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.scan-advanced-tab {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(8, 14, 22, 0.84);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.scan-advanced-tab strong {
+  font-size: 0.96rem;
+}
+
+.scan-advanced-tab span {
+  color: var(--muted);
+  line-height: 1.45;
+  font-size: 0.85rem;
+}
+
+.scan-advanced-tab.active {
+  border-color: rgba(244, 193, 95, 0.3);
+  background: linear-gradient(180deg, rgba(76, 58, 15, 0.34), rgba(8, 14, 22, 0.9));
+}
+
+.scan-advanced-tab.active span {
+  color: var(--text);
+}
+
 .scan-context-banner {
   display: flex;
   justify-content: space-between;

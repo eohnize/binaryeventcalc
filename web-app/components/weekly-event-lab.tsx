@@ -205,6 +205,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const [kindFilter, setKindFilter] = useState<"all" | EventKind>("all");
   const [selectedEventId, setSelectedEventId] = useState(snapshot.events[0]?.id ?? "");
   const [selectedSymbol, setSelectedSymbol] = useState(snapshot.events[0]?.primarySymbol ?? "");
+  const [advancedSection, setAdvancedSection] = useState<"summary" | "odds" | "legs" | "review">("summary");
   const [tickerInputs, setTickerInputs] = useState<TickerInputState>(
     snapshot.events[0] ? buildTickerInputs(snapshot.events[0]) : {},
   );
@@ -247,6 +248,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
     setLegs(buildPortfolioStarterLegs(selectedEvent));
     setSelectedScenarioName(selectedEvent.portfolioScenarios[0]?.name ?? "");
     setShowAdvanced(false);
+    setAdvancedSection("summary");
   }, [selectedEvent]);
 
   if (!selectedEvent || !selectedProfile) {
@@ -502,6 +504,30 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const selectedPriorityReason =
     boardRows.find((row) => row.event.id === selectedEvent.id)?.priorityReason ??
     priorityReason(selectedEvent, rewardRiskMultiple);
+  const advancedTabs = [
+    {
+      key: "summary" as const,
+      label: "Overview",
+      note: "Why this catalyst matters and why it made the board",
+    },
+    {
+      key: "odds" as const,
+      label: "Odds",
+      note: "Probability blend, scenario weights, and move assumptions",
+    },
+    {
+      key: "legs" as const,
+      label: "Structure",
+      note: "Ticker inputs, basket shape, and editable option legs",
+    },
+    {
+      key: "review" as const,
+      label: "Review",
+      note: "Scenario outcomes, checklist, and nearby watchlist names",
+    },
+  ];
+  const activeAdvancedTab =
+    advancedTabs.find((tab) => tab.key === advancedSection) ?? advancedTabs[0];
   const legacyHref = `/?ticker=${encodeURIComponent(selectedProfile.symbol)}&price=${encodeURIComponent(
     (spotBySymbol[selectedProfile.symbol] ?? selectedProfile.seedSpot).toFixed(2),
   )}${launchLeg ? `&strike=${encodeURIComponent(launchLeg.strike.toFixed(2))}&dte=${encodeURIComponent(String(launchLeg.dte))}` : ""}`;
@@ -691,162 +717,262 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
         </section>
 
         {showAdvanced ? (
-          <div className="scan-detail-panel">
-            <section className="scan-detail-card">
-              <div className="scan-detail-head">
+          <div className="scan-detail-panel scan-advanced-shell">
+            <section className="scan-detail-card scan-advanced-nav-card">
+              <div className="scan-detail-head compact">
                 <div>
-                  <span className="eyebrow">{selectedEvent.kind}</span>
-                  <h3>{selectedEvent.title}</h3>
-                  <p>{selectedEvent.whyItMatters}</p>
+                  <span className="eyebrow">Advanced</span>
+                  <h3>Work one layer at a time</h3>
+                  <p>
+                    Keep this view focused: start with the setup, then move into odds, structure, or review only when you
+                    need it.
+                  </p>
                 </div>
-                <div className="scan-score-block">
-                  <strong>{selectedEvent.ranking.composite}</strong>
-                  <span>Scan score</span>
+                <div className="scan-advanced-meta">
+                  <strong>{activeAdvancedTab.label}</strong>
+                  <span>{activeAdvancedTab.note}</span>
                 </div>
               </div>
 
-              <div className="scan-kpi-grid">
-                <article className="scan-kpi-card"><span className="level-kicker">Scope</span><strong>{selectedEvent.scope}</strong></article>
-                <article className="scan-kpi-card"><span className="level-kicker">Market Proxy</span><strong>{selectedEvent.marketProxy}</strong></article>
-                <article className="scan-kpi-card"><span className="level-kicker">Timing</span><strong>{selectedEvent.eventLabel} | {selectedEvent.timeLabel}</strong></article>
-                <article className="scan-kpi-card"><span className="level-kicker">Asymmetry</span><strong>{selectedEvent.ranking.asymmetry}/100</strong></article>
-              </div>
-
-              <div className="scan-score-grid">
-                <article className="scan-score-card"><span className="level-kicker">Market Impact</span><strong>{selectedEvent.ranking.marketImpact}</strong></article>
-                <article className="scan-score-card"><span className="level-kicker">Ticker Sensitivity</span><strong>{selectedEvent.ranking.tickerSensitivity}</strong></article>
-                <article className="scan-score-card"><span className="level-kicker">Liquidity</span><strong>{selectedEvent.ranking.liquidity}</strong></article>
-                <article className="scan-score-card"><span className="level-kicker">Confidence</span><strong>{selectedEvent.ranking.confidence}</strong></article>
-                <article className="scan-score-card"><span className="level-kicker">Composite Logic</span><strong>{selectedEvent.ranking.composite}</strong><p>Weighted blend with a confidence penalty so high-impact but lower-conviction events do not crowd the top of the board.</p></article>
-              </div>
-
-              <div className="scan-chip-row">
-                {selectedEvent.tags.map((tag) => (
-                  <span key={tag} className="scan-chip muted">{tag}</span>
+              <div className="scan-advanced-nav">
+                {advancedTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    className={`scan-advanced-tab ${advancedSection === tab.key ? "active" : ""}`}
+                    onClick={() => setAdvancedSection(tab.key)}
+                  >
+                    <strong>{tab.label}</strong>
+                    <span>{tab.note}</span>
+                  </button>
                 ))}
-              </div>
-
-              <div className="scan-probability-panel">
-                <div className="scan-detail-head compact">
-                  <div>
-                    <h3>Probability Engine</h3>
-                    <p>{selectedEvent.probabilityOverlay.note}</p>
-                  </div>
-                  <span className={`scan-mode-pill ${selectedEvent.probabilityOverlay.mode}`}>
-                    {selectedEvent.probabilityOverlay.mode === "hybrid" ? "Hybrid Blend" : "Historical Only"}
-                  </span>
-                </div>
-
-                <div className="scan-probability-grid">
-                  {selectedEvent.probabilityOverlay.sources.length > 0 ? (
-                    selectedEvent.probabilityOverlay.sources.map((source) => (
-                      <article key={`${source.source}-${source.marketLabel}-${source.contractLabel}`} className="scan-probability-card">
-                        <div className="scan-probability-top">
-                          <strong>{source.source.toUpperCase()}</strong>
-                          <span className={`scan-chip ${qualityTone(source.quality)}`}>{source.quality} quality</span>
-                        </div>
-                        <p>{source.marketLabel}</p>
-                        <strong>{source.contractLabel}</strong>
-                        <div className="scan-probability-stats">
-                          <span>{fmtProbability(source.probability)} live bias</span>
-                          <span>{fmtSignedNumber(source.change1d)} pts 1d</span>
-                        </div>
-                        <p>{source.note}</p>
-                      </article>
-                    ))
-                  ) : (
-                    <article className="scan-probability-card">
-                      <div className="scan-probability-top">
-                        <strong>No Direct Market</strong>
-                        <span className="scan-chip muted">Historical prior</span>
-                      </div>
-                      <p>This setup currently leans on category history and your forward event journal rather than a clean market-implied odds feed.</p>
-                    </article>
-                  )}
-                </div>
-
-                <p className="scan-inline-note">
-                  {selectedEvent.probabilityOverlay.blendRule}
-                </p>
               </div>
             </section>
 
+            {advancedSection === "summary" || advancedSection === "odds" ? (
+            <section className="scan-detail-card">
+              {advancedSection === "summary" ? (
+                <>
+                  <div className="scan-detail-head">
+                    <div>
+                      <span className="eyebrow">{selectedEvent.kind}</span>
+                      <h3>
+                        {selectedEvent.title} | {catalystLabel(selectedEvent)}
+                      </h3>
+                      <p>{selectedEvent.whyItMatters}</p>
+                    </div>
+                    <div className="scan-score-block">
+                      <strong>{selectedEvent.ranking.composite}</strong>
+                      <span>Scan score</span>
+                    </div>
+                  </div>
+
+                  <div className="scan-kpi-grid">
+                    <article className="scan-kpi-card">
+                      <span className="level-kicker">Timing</span>
+                      <strong>
+                        {selectedEvent.eventLabel} | {selectedEvent.timeLabel}
+                      </strong>
+                    </article>
+                    <article className="scan-kpi-card">
+                      <span className="level-kicker">Market Proxy</span>
+                      <strong>{selectedEvent.marketProxy}</strong>
+                    </article>
+                    <article className="scan-kpi-card">
+                      <span className="level-kicker">Scope</span>
+                      <strong>{selectedEvent.scope}</strong>
+                    </article>
+                    <article className="scan-kpi-card">
+                      <span className="level-kicker">Priority Reason</span>
+                      <strong>{selectedPriorityReason}</strong>
+                    </article>
+                  </div>
+
+                  <div className="scan-mini-grid">
+                    <article className="scan-mini-card">
+                      <span className="level-kicker">Market Impact</span>
+                      <strong>{selectedEvent.ranking.marketImpact}</strong>
+                      <p>How broadly this catalyst can move the tape.</p>
+                    </article>
+                    <article className="scan-mini-card">
+                      <span className="level-kicker">Ticker Sensitivity</span>
+                      <strong>{selectedEvent.ranking.tickerSensitivity}</strong>
+                      <p>How tightly the basket should react if the event resolves cleanly.</p>
+                    </article>
+                    <article className="scan-mini-card">
+                      <span className="level-kicker">Liquidity</span>
+                      <strong>{selectedEvent.ranking.liquidity}</strong>
+                      <p>Whether the setup is actually tradable with short-dated options.</p>
+                    </article>
+                    <article className="scan-mini-card">
+                      <span className="level-kicker">Confidence</span>
+                      <strong>{selectedEvent.ranking.confidence}</strong>
+                      <p>How much trust to place in this read versus just the headline.</p>
+                    </article>
+                  </div>
+
+                  <div className="scan-chip-row">
+                    {selectedEvent.tags.map((tag) => (
+                      <span key={tag} className="scan-chip muted">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
+              {advancedSection === "odds" ? (
+                <div className="scan-probability-panel">
+                  <div className="scan-detail-head compact">
+                    <div>
+                      <h3>Probability Engine</h3>
+                      <p>{selectedEvent.probabilityOverlay.note}</p>
+                    </div>
+                    <span className={`scan-mode-pill ${selectedEvent.probabilityOverlay.mode}`}>
+                      {selectedEvent.probabilityOverlay.mode === "hybrid" ? "Hybrid Blend" : "Historical Only"}
+                    </span>
+                  </div>
+
+                  <div className="scan-probability-grid">
+                    {selectedEvent.probabilityOverlay.sources.length > 0 ? (
+                      selectedEvent.probabilityOverlay.sources.map((source) => (
+                        <article
+                          key={`${source.source}-${source.marketLabel}-${source.contractLabel}`}
+                          className="scan-probability-card"
+                        >
+                          <div className="scan-probability-top">
+                            <strong>{source.source.toUpperCase()}</strong>
+                            <span className={`scan-chip ${qualityTone(source.quality)}`}>{source.quality} quality</span>
+                          </div>
+                          <p>{source.marketLabel}</p>
+                          <strong>{source.contractLabel}</strong>
+                          <div className="scan-probability-stats">
+                            <span>{fmtProbability(source.probability)} live bias</span>
+                            <span>{fmtSignedNumber(source.change1d)} pts 1d</span>
+                          </div>
+                          <p>{source.note}</p>
+                        </article>
+                      ))
+                    ) : (
+                      <article className="scan-probability-card">
+                        <div className="scan-probability-top">
+                          <strong>No Direct Market</strong>
+                          <span className="scan-chip muted">Historical prior</span>
+                        </div>
+                        <p>
+                          This setup currently leans on category history and your forward event journal rather than a clean
+                          market-implied odds feed.
+                        </p>
+                      </article>
+                    )}
+                  </div>
+
+                  <p className="scan-inline-note">{selectedEvent.probabilityOverlay.blendRule}</p>
+                </div>
+              ) : null}
+            </section>
+            ) : null}
+
+            {advancedSection !== "summary" ? (
             <section className="scan-detail-card">
               <div className="scan-detail-head compact">
                 <div>
-                  <h3>Scenario Planner</h3>
-                  <p>{selectedEvent.scenarioPlanningNote}</p>
+                  <h3>
+                    {advancedSection === "odds"
+                      ? "Scenario Builder"
+                      : advancedSection === "legs"
+                        ? "Structure Builder"
+                        : "Scenario Review"}
+                  </h3>
+                  <p>
+                    {advancedSection === "odds"
+                      ? "Tune the weights and move assumptions without carrying the entire trade ticket on screen."
+                      : advancedSection === "legs"
+                        ? selectedEvent.scenarioPlanningNote
+                        : "Review branch outcomes, payoff shape, and what still needs confirmation."}
+                  </p>
                 </div>
-                <div className="scan-chip-row">
-                  {selectedEvent.tickerProfiles.map((profile) => (
-                    <button
-                      key={profile.symbol}
-                      type="button"
-                      className={`scan-tab ${profile.symbol === selectedProfile.symbol ? "active" : ""}`}
-                      onClick={() => loadProfile(profile)}
-                    >
-                      {profile.symbol}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="scan-planner-toolbar">
-                <button type="button" className="secondary-btn" onClick={resetStarterLegs}>Reset Starter Legs</button>
-                <a className="primary-btn" href={legacyHref}>Open Legacy Calculator</a>
-              </div>
-
-              <div className="scan-context-banner">
-                <div>
-                  <span className="level-kicker">Portfolio Mode</span>
-                  <strong>{selectedEvent.tickerProfiles.map((profile) => profile.symbol).join(" / ")}</strong>
-                </div>
-                <p>
-                  One event can now mix adjacent tickers in the same setup. Keep <strong>{selectedProfile.symbol}</strong> as your
-                  focus name for chain work, but use the editable legs below to stack cleaner cross-ticker asymmetry.
-                </p>
-              </div>
-
-              <div className="scan-symbol-grid">
-                {selectedEvent.tickerProfiles.map((profile) => (
-                  <article key={profile.symbol} className={`scan-symbol-card ${profile.symbol === selectedProfile.symbol ? "focus" : ""}`}>
-                    <div className="scan-symbol-head">
-                      <button type="button" className={`scan-tab ${profile.symbol === selectedProfile.symbol ? "active" : ""}`} onClick={() => loadProfile(profile)}>
+                {advancedSection === "legs" ? (
+                  <div className="scan-chip-row">
+                    {selectedEvent.tickerProfiles.map((profile) => (
+                      <button
+                        key={profile.symbol}
+                        type="button"
+                        className={`scan-tab ${profile.symbol === selectedProfile.symbol ? "active" : ""}`}
+                        onClick={() => loadProfile(profile)}
+                      >
                         {profile.symbol}
                       </button>
-                      <span>{profile.driver}</span>
-                    </div>
-                    <div className="scan-symbol-input-grid">
-                      <label className="field-row compact-input">
-                        <span>Spot</span>
-                        <input
-                          value={tickerInputs[profile.symbol]?.spot ?? profile.seedSpot.toFixed(2)}
-                          onChange={(event) => updateTickerInput(profile.symbol, "spot", event.target.value)}
-                          inputMode="decimal"
-                        />
-                      </label>
-                      <label className="field-row compact-input">
-                        <span>Implied Move %</span>
-                        <input
-                          value={tickerInputs[profile.symbol]?.impliedMove ?? profile.impliedMovePct.toFixed(1)}
-                          onChange={(event) => updateTickerInput(profile.symbol, "impliedMove", event.target.value)}
-                          inputMode="decimal"
-                        />
-                      </label>
-                    </div>
-                    <p>{profile.scenarioFocus}</p>
-                  </article>
-                ))}
+                    ))}
+                  </div>
+                ) : advancedSection === "review" ? (
+                  <button type="button" className="secondary-btn" onClick={() => setAdvancedSection("odds")}>
+                    Back To Odds
+                  </button>
+                ) : null}
               </div>
 
-              <div className="scan-mini-grid">
-                <article className="scan-mini-card"><span className="level-kicker">Focus Ticker</span><strong>{selectedProfile.label}</strong><p>{selectedProfile.driver}</p></article>
-                <article className="scan-mini-card"><span className="level-kicker">Deployed</span><strong>{fmtDollar(totalInvested)}</strong><p>{legs.length} editable legs across {selectedEvent.tickerProfiles.length} tickers</p></article>
-                <article className="scan-mini-card"><span className="level-kicker">Calls vs Puts</span><strong>{fmtDollar(callCost)} / {fmtDollar(putCost)}</strong><p>Starter allocation can now mix symbols</p></article>
-                <article className="scan-mini-card"><span className="level-kicker">Weighted Expectancy</span><strong>{compactMoney(weightedExpectedPnl)}</strong><p>Uses blended scenario weights from history and prediction-market bias when a clean market exists.</p></article>
-                <article className="scan-mini-card"><span className="level-kicker">Best vs Worst</span><strong>{compactMoney(bestRow.result.totalPnl)} / {compactMoney(worstRow.result.totalPnl)}</strong><p className={passesGuardrail ? "bull-text" : "bear-text"}>{passesGuardrail ? `Passes 1:2.5 floor at ${fmtMultiple(rewardRiskMultiple)}` : `Needs rebalance: ${fmtMultiple(rewardRiskMultiple)} vs 2.5x floor`}</p></article>
-              </div>
+              {advancedSection === "legs" ? (
+                <>
+                  <div className="scan-planner-toolbar">
+                    <button type="button" className="secondary-btn" onClick={resetStarterLegs}>Reset Starter Legs</button>
+                    <a className="primary-btn" href={legacyHref}>Open Legacy Calculator</a>
+                  </div>
 
+                  <div className="scan-context-banner">
+                    <div>
+                      <span className="level-kicker">Portfolio Mode</span>
+                      <strong>{selectedEvent.tickerProfiles.map((profile) => profile.symbol).join(" / ")}</strong>
+                    </div>
+                    <p>
+                      Keep <strong>{selectedProfile.symbol}</strong> as the focus name for chain work, but only keep adjacent
+                      tickers that genuinely improve payoff quality.
+                    </p>
+                  </div>
+
+                  <div className="scan-symbol-grid">
+                    {selectedEvent.tickerProfiles.map((profile) => (
+                      <article key={profile.symbol} className={`scan-symbol-card ${profile.symbol === selectedProfile.symbol ? "focus" : ""}`}>
+                        <div className="scan-symbol-head">
+                          <button type="button" className={`scan-tab ${profile.symbol === selectedProfile.symbol ? "active" : ""}`} onClick={() => loadProfile(profile)}>
+                            {profile.symbol}
+                          </button>
+                          <span>{profile.driver}</span>
+                        </div>
+                        <div className="scan-symbol-input-grid">
+                          <label className="field-row compact-input">
+                            <span>Spot</span>
+                            <input
+                              value={tickerInputs[profile.symbol]?.spot ?? profile.seedSpot.toFixed(2)}
+                              onChange={(event) => updateTickerInput(profile.symbol, "spot", event.target.value)}
+                              inputMode="decimal"
+                            />
+                          </label>
+                          <label className="field-row compact-input">
+                            <span>Implied Move %</span>
+                            <input
+                              value={tickerInputs[profile.symbol]?.impliedMove ?? profile.impliedMovePct.toFixed(1)}
+                              onChange={(event) => updateTickerInput(profile.symbol, "impliedMove", event.target.value)}
+                              inputMode="decimal"
+                            />
+                          </label>
+                        </div>
+                        <p>{profile.scenarioFocus}</p>
+                      </article>
+                    ))}
+                  </div>
+
+                  <div className="scan-mini-grid">
+                    <article className="scan-mini-card"><span className="level-kicker">Focus Ticker</span><strong>{selectedProfile.label}</strong><p>{selectedProfile.driver}</p></article>
+                    <article className="scan-mini-card"><span className="level-kicker">Deployed</span><strong>{fmtDollar(totalInvested)}</strong><p>{legs.length} editable legs across {selectedEvent.tickerProfiles.length} tickers</p></article>
+                    <article className="scan-mini-card"><span className="level-kicker">Calls vs Puts</span><strong>{fmtDollar(callCost)} / {fmtDollar(putCost)}</strong><p>Starter allocation can now mix symbols</p></article>
+                    <article className="scan-mini-card"><span className="level-kicker">Weighted Expectancy</span><strong>{compactMoney(weightedExpectedPnl)}</strong><p>Uses the current blended scenario mix.</p></article>
+                    <article className="scan-mini-card"><span className="level-kicker">Best vs Worst</span><strong>{compactMoney(bestRow.result.totalPnl)} / {compactMoney(worstRow.result.totalPnl)}</strong><p className={passesGuardrail ? "bull-text" : "bear-text"}>{passesGuardrail ? `Passes 1:2.5 floor at ${fmtMultiple(rewardRiskMultiple)}` : `Needs rebalance: ${fmtMultiple(rewardRiskMultiple)} vs 2.5x floor`}</p></article>
+                  </div>
+                </>
+              ) : null}
+
+              {advancedSection === "summary" ? (
               <div className="scan-method-grid">
                 <article className="scan-method-card">
                   <span className="level-kicker">Outcome Memory</span>
@@ -874,7 +1000,9 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   <p>Anything much above roughly 2.0x the seeded implied move should be treated as a stress case, not a base expectation.</p>
                 </article>
               </div>
+              ) : null}
 
+              {advancedSection === "odds" ? (
               <div className="scan-builder-panel">
                 <div className="scan-detail-head compact">
                   <div>
@@ -938,7 +1066,10 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                           <button
                             type="button"
                             className={`scan-tab ${selectedScenarioRow.scenario.name === scenario.name ? "active" : ""}`}
-                            onClick={() => setSelectedScenarioName(scenario.name)}
+                            onClick={() => {
+                              setSelectedScenarioName(scenario.name);
+                              setAdvancedSection("review");
+                            }}
                           >
                             Review
                           </button>
@@ -994,7 +1125,9 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   })}
                 </div>
               </div>
+              ) : null}
 
+              {advancedSection === "legs" ? (
               <div className="scan-table-wrap">
                 <div className="scan-table-head">
                   <strong>Editable Legs</strong>
@@ -1050,7 +1183,9 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   </tbody>
                 </table>
               </div>
+              ) : null}
 
+              {advancedSection === "review" ? (
               <div className="scan-scenario-list">
                 {scenarioRows.map(({ scenario, probabilityWeight, result, rawProbability, normalizedProbability }) => (
                   <button
@@ -1098,7 +1233,9 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   </button>
                 ))}
               </div>
+              ) : null}
 
+              {advancedSection === "review" ? (
               <div className="scan-slider-card">
                 <div className="scan-slider-head">
                   <strong>{selectedScenarioRow.scenario.name} Breakdown</strong>
@@ -1126,8 +1263,11 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                   ))}
                 </div>
               </div>
+              ) : null}
             </section>
+            ) : null}
 
+            {advancedSection === "review" ? (
             <section className="scan-detail-card">
               <div className="scan-two-col">
                 <div>
@@ -1156,6 +1296,7 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
                 </div>
               </div>
             </section>
+            ) : null}
           </div>
         ) : null}
       </section>
