@@ -451,10 +451,6 @@ export function WeeklyEventLab({ snapshot }: { snapshot: WeeklyScanSnapshot }) {
   const passesGuardrail = rewardRiskMultiple >= 2.5;
   const selectedScenarioRow =
     scenarioRows.find((row) => row.scenario.name === selectedScenarioName) ?? scenarioRows[0];
-  const selectedScenarioStress = selectedScenarioRow.result.symbolMoves.reduce((max, move) => {
-    const multiple = move.impliedMovePct > 0 ? Math.abs(move.movePct) / move.impliedMovePct : 0;
-    return Math.max(max, multiple);
-  }, 0);
   const favoriteScenarioRow = scenarioRows.reduce(
     (best, row) => (row.normalizedProbability > best.normalizedProbability ? row : best),
     scenarioRows[0],

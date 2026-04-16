@@ -920,7 +920,7 @@ export async function buildResolvedWeeklyScanSnapshot(now = new Date()): Promise
             ...event,
             dataOrigin: "seeded" as const,
             dataOriginNote: "No CPI or PPI release was matched from the live weekly economic calendar, so this row stayed on fallback assumptions.",
-          };
+          } satisfies EventCandidate;
         }
 
         if (event.id === "ai-read-through") {
@@ -929,14 +929,14 @@ export async function buildResolvedWeeklyScanSnapshot(now = new Date()): Promise
             dataOrigin: "seeded" as const,
             dataOriginNote:
               "No earnings name this week cleared the >$200B market cap and >1M average volume filter, so this row stayed on fallback assumptions.",
-          };
+          } satisfies EventCandidate;
         }
 
         return {
           ...event,
           dataOrigin: "seeded" as const,
           dataOriginNote: "This catalyst family is still running on the seeded board because a live event feed has not been connected yet.",
-        };
+        } satisfies EventCandidate;
       })
       .sort((left, right) => right.ranking.composite - left.ranking.composite);
 
